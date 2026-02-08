@@ -13,8 +13,11 @@ Autonomous agent for detecting and reconciling drift between real API behavior a
 ## Installation
 
 ```bash
-pip install -e .
+pip install git+https://github.com/dprakash2101/spec_drift_agent.git
 ```
+
+> [!NOTE]
+> Installation via PyPI (`pip install specdrift`) will be available soon.
 
 ## Usage
 
@@ -23,7 +26,6 @@ pip install -e .
 specdrift analyze --spec openapi.yaml --endpoint https://api.example.com/users
 
 # Run with the test API (dogfooding)
-# For detailed step-by-step testing instructions, see [walkthrough.md](walkthrough.md)
 cd test_api && uvicorn main:app --reload --port 8000
 specdrift analyze --spec test_api/openapi_spec.yaml --endpoint http://localhost:8000
 ```
@@ -51,9 +53,13 @@ ruff check src/
 - **Live Spec Comparison & Request Drift**: Fetch live OpenAPI/Swagger definition to detect changes in request contracts (headers, query parameters).
 - **History Tracking**: Track drift over time to identify regression patterns.
 
+## Documentation
+
+- **[Project Walkthrough](walkthrough.md)**: Detailed step-by-step testing instructions and scenario demonstrations.
+
 ## License
 
-MIT License
+[MIT License](https://github.com/dprakash2101/spec_drift_agent/blob/main/LICENSE)
 
 ## Author
 
