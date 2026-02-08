@@ -61,9 +61,10 @@ ruff check src/
 
 [MIT License](https://github.com/dprakash2101/spec_drift_agent/blob/main/LICENSE)
 
-## Author
+## Authors
 
 [Devi Prakash Kandikonda](https://github.com/dprakash2101)
+[Vamsi Krishna Kandikonda](https://github.com/vamsi-31)
 
 ## Credits
 
