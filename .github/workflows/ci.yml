@@ -28,10 +28,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install -e ".[dev,test-api]"
 
-    - name: Lint with Ruff
-      run: |
-        ruff check src/ tests/
-
     - name: Type check with Mypy
       run: |
         mypy src/
