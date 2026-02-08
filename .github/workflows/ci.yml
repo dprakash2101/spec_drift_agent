@@ -38,6 +38,6 @@ jobs:
 
     - name: Run tests
       env:
-        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}  # Required for integration tests
+        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}  
       run: |
         pytest tests/
