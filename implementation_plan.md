@@ -70,13 +70,13 @@ flowchart TB
 
 #### [NEW] [src/specdrift/types.py](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/types.py)
 Core Pydantic models:
-- `RequestConfig` - HTTP request configuration
-- `RecordedResponse` - Captured API response
-- `Anomaly` - Detected drift anomaly
-- `AnomalySummary` - Aggregated anomalies
-- `ChangeInstruction` - Proposed spec change
-- `LLMDecision` - Structured LLM output (enforced schema)
-- `DriftReport` - Final output
+- [RequestConfig](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/types.py#66-76) - HTTP request configuration
+- [RecordedResponse](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/types.py#78-87) - Captured API response
+- [Anomaly](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/types.py#94-102) - Detected drift anomaly
+- [AnomalySummary](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/types.py#104-111) - Aggregated anomalies
+- [ChangeInstruction](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/types.py#118-125) - Proposed spec change
+- [LLMDecision](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/types.py#127-144) - Structured LLM output (enforced schema)
+- [DriftReport](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/types.py#151-162) - Final output
 
 ---
 
@@ -93,7 +93,7 @@ Core Pydantic models:
 ### Phase 4: OpenAPI Parser
 
 #### [NEW] [src/specdrift/modules/openapi_parser.py](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/modules/openapi_parser.py)
-- `parse_spec(spec: str | dict) -> ParsedSpec`
+- [parse_spec(spec: str | dict) -> ParsedSpec](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/modules/openapi_parser.py#14-66)
 - Extract schemas by path/method
 - Resolve `$ref` references
 - Cache resolved schemas
@@ -106,12 +106,12 @@ Core Pydantic models:
 
 | File | Purpose |
 |------|---------|
-| `__init__.py` | `compare_response_to_schema()` main entry |
-| `detectors/type_detector.py` | Type mismatches |
-| `detectors/required_detector.py` | Missing required fields |
-| `detectors/additional_detector.py` | Undocumented fields |
-| `detectors/enum_detector.py` | Enum violations |
-| `detectors/status_detector.py` | Status code mismatches |
+| [__init__.py](file:///c:/Users/saikr/source/repos/spec_drift_agent/tests/__init__.py) | [compare_response_to_schema()](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/modules/diff_engine/__init__.py#18-64) main entry |
+| [detectors/type_detector.py](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/modules/diff_engine/detectors/type_detector.py) | Type mismatches |
+| [detectors/required_detector.py](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/modules/diff_engine/detectors/required_detector.py) | Missing required fields |
+| [detectors/additional_detector.py](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/modules/diff_engine/detectors/additional_detector.py) | Undocumented fields |
+| [detectors/enum_detector.py](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/modules/diff_engine/detectors/enum_detector.py) | Enum violations |
+| [detectors/status_detector.py](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/modules/diff_engine/detectors/status_detector.py) | Status code mismatches |
 | `anomaly_summarizer.py` | Aggregate anomalies |
 
 ---
@@ -122,10 +122,10 @@ Core Pydantic models:
 
 | File | Purpose |
 |------|---------|
-| `__init__.py` | `async def reconcile()` main entry |
-| `prompt_builder.py` | Build structured prompts |
-| `llm_client.py` | `google-genai` integration with Pydantic structured output |
-| `output_validator.py` | Validate against `LLMDecision` schema |
+| [__init__.py](file:///c:/Users/saikr/source/repos/spec_drift_agent/tests/__init__.py) | `async def reconcile()` main entry |
+| [prompt_builder.py](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/modules/semantic_reconciler/prompt_builder.py) | Build structured prompts |
+| [llm_client.py](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/modules/semantic_reconciler/llm_client.py) | `google-genai` integration with Pydantic structured output |
+| `output_validator.py` | Validate against [LLMDecision](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/types.py#127-144) schema |
 
 **Key**: Uses `google-genai` SDK's native structured output with Pydantic models for guaranteed schema compliance.
 
@@ -142,7 +142,7 @@ Core Pydantic models:
 ### Phase 8: Spec Updater
 
 #### [NEW] [src/specdrift/modules/spec_updater.py](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/modules/spec_updater.py)
-- `apply_updates(spec, changes) -> UpdatedSpec`
+- [apply_updates(spec, changes) -> UpdatedSpec](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/modules/spec_updater.py#13-39)
 - Use `jsonpath-ng` for precise updates
 - Preserve YAML formatting
 
@@ -152,7 +152,7 @@ Core Pydantic models:
 
 #### [NEW] [src/specdrift/cli.py](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/cli.py)
 - Built with `typer`
-- Commands: `analyze`, `validate`
+- Commands: [analyze](file:///c:/Users/saikr/source/repos/spec_drift_agent/src/specdrift/cli.py#49-139), `validate`
 - Supports: `--spec`, `--endpoint`, `--output`
 
 ---
@@ -165,14 +165,14 @@ A FastAPI application with **intentional spec drift** scenarios to test the agen
 
 | File | Purpose |
 |------|---------|
-| `main.py` | FastAPI app with drifted endpoints |
-| `openapi_spec.yaml` | The "official" spec (intentionally out-of-sync) |
-| `scenarios.md` | Documents each drift scenario |
+| [main.py](file:///c:/Users/saikr/source/repos/spec_drift_agent/test_api/main.py) | FastAPI app with drifted endpoints |
+| [openapi_spec.yaml](file:///c:/Users/saikr/source/repos/spec_drift_agent/test_api/openapi_spec.yaml) | The "official" spec (intentionally out-of-sync) |
+| [scenarios.md](file:///c:/Users/saikr/source/repos/spec_drift_agent/test_api/scenarios.md) | Documents each drift scenario |
 
 **Built-in Drift Scenarios:**
 1. **Extra field** - Response includes `metadata` not in spec
 2. **Missing required** - `updated_at` sometimes null (spec says required)
-3. **Enum violation** - `status` returns `"archived"` (not in spec enum)
+3. **Enum violation** - [status](file:///c:/Users/saikr/source/repos/spec_drift_agent/test_api/main.py#125-137) returns `"archived"` (not in spec enum)
 4. **Type mismatch** - `count` returns string `"42"` instead of int
 5. **Undocumented status** - Returns 422 (not documented)
 
@@ -261,4 +261,9 @@ specdrift analyze --spec examples/sample_spec.yaml --endpoint https://httpbin.or
 | `pydantic` | ^2.0 | Type validation & LLM output schemas |
 | `pyyaml` | ^6.0 | OpenAPI YAML parsing |
 | `jsonschema` | ^4.0 | Schema validation |
-| `typer` | ^0.12 | CLI framework |
+## Future Roadmap
+
+- [ ] **Full Spec Generation**: Automatically generate a complete, valid OpenAPI spec file merging all discovered changes.
+- [ ] **CI/CD Integration**: GitHub Actions and GitLab CI support for automated drift detection.
+- [ ] **History Tracking**: Track drift over time to identify regression patterns.
+- [ ] **Live Spec Comparison & Request Drift**: Fetch live OpenAPI/Swagger definition to detect changes in request contracts (headers, query parameters).
