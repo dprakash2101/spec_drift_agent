@@ -7,7 +7,7 @@ import copy
 from typing import Any
 
 import yaml
-from jsonpath_ng import parse as parse_jsonpath
+from jsonpath_ng import parse as parse_jsonpath  # type: ignore[import-untyped]
 
 
 def apply_updates(

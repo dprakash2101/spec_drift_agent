@@ -11,7 +11,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 
-from specdrift.types import AnomalySummary, LLMDecision, DecisionType, ChangeType
+from specdrift.types import AnomalySummary, LLMDecision, DecisionType, ChangeType, ChangeInstruction
 
 from .prompt_builder import build_reconciliation_prompt, get_system_prompt
 
@@ -148,12 +148,12 @@ async def reconcile_with_llm(
             decision=DecisionType(data["decision"]),
             confidence=data["confidence"],
             proposed_changes=[
-                {
-                    "change_type": ChangeType(c["change_type"]),
-                    "json_path": c["json_path"],
-                    "reason": c["reason"],
-                    "backward_compatible": c["backward_compatible"],
-                }
+                ChangeInstruction(
+                    change_type=ChangeType(c["change_type"]),
+                    json_path=c["json_path"],
+                    reason=c["reason"],
+                    backward_compatible=c["backward_compatible"],
+                )
                 for c in data.get("proposed_changes", [])
             ],
             updated_openapi_fragment=updated_fragment,

@@ -140,19 +140,19 @@ def resolve_refs(schema: dict[str, Any], full_spec: dict[str, Any]) -> dict[str,
         return result
     
     # Recursively resolve in nested structures
-    result: dict[str, Any] = {}
+    resolved_schema: dict[str, Any] = {}
     for key, value in schema.items():
         if isinstance(value, dict):
-            result[key] = resolve_refs(value, full_spec)
+            resolved_schema[key] = resolve_refs(value, full_spec)
         elif isinstance(value, list):
-            result[key] = [
+            resolved_schema[key] = [
                 resolve_refs(item, full_spec) if isinstance(item, dict) else item
                 for item in value
             ]
         else:
-            result[key] = value
+            resolved_schema[key] = value
     
-    return result
+    return resolved_schema
 
 
 def _resolve_ref_path(ref_path: str, full_spec: dict[str, Any]) -> dict[str, Any]:
