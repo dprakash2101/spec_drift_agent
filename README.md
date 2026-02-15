@@ -156,5 +156,7 @@ ruff check src/
 
 ## Authors
 
-[Devi Prakash Kandikonda](https://github.com/dprakash2101)
-[Vamsi Krishna Kandikonda](https://github.com/vamsi-31)
+| Name | Role | GitHub |
+|---|---|---|
+| Devi Prakash Kandikonda | Project Co-Author | [@dprakash2101](https://github.com/dprakash2101) |
+| Vamsi Krishna Kandikonda | Project Co-Author | [@vamsi-31](https://github.com/vamsi-31) |
