@@ -402,6 +402,7 @@ def analyze(
             or auth_config.get("type")
             or config_data.get("auth_type")
             or os.environ.get("SPECDRIFT_AUTH_TYPE")
+            or os.environ.get("API_AUTH_TYPE")
         )
         resolved_auth_type = AuthType(auth_type_value) if auth_type_value else None
 
@@ -420,7 +421,9 @@ def analyze(
             or auth_config.get("auth_token")
             or auth_config.get("token")
             or os.environ.get("SPECDRIFT_AUTH_TOKEN")
+            or os.environ.get("API_AUTH_TOKEN")
             or os.environ.get("AUTH_TOKEN")
+            or os.environ.get("API_BEARER_TOKEN")
             or os.environ.get("BEARER_TOKEN")
         )
         resolved_basic_username = (
@@ -428,6 +431,7 @@ def analyze(
             or auth_config.get("basic_username")
             or auth_config.get("username")
             or os.environ.get("SPECDRIFT_BASIC_USERNAME")
+            or os.environ.get("API_BASIC_USERNAME")
             or os.environ.get("BASIC_USERNAME")
         )
         resolved_basic_password = (
@@ -435,6 +439,7 @@ def analyze(
             or auth_config.get("basic_password")
             or auth_config.get("password")
             or os.environ.get("SPECDRIFT_BASIC_PASSWORD")
+            or os.environ.get("API_BASIC_PASSWORD")
             or os.environ.get("BASIC_PASSWORD")
         )
         resolved_api_key = (
@@ -455,30 +460,35 @@ def analyze(
             client_id
             or auth_config.get("client_id")
             or os.environ.get("SPECDRIFT_CLIENT_ID")
+            or os.environ.get("API_CLIENT_ID")
             or os.environ.get("CLIENT_ID")
         )
         resolved_client_secret = (
             client_secret
             or auth_config.get("client_secret")
             or os.environ.get("SPECDRIFT_CLIENT_SECRET")
+            or os.environ.get("API_CLIENT_SECRET")
             or os.environ.get("CLIENT_SECRET")
         )
         resolved_token_url = (
             token_url
             or auth_config.get("token_url")
             or os.environ.get("SPECDRIFT_TOKEN_URL")
+            or os.environ.get("API_TOKEN_URL")
             or os.environ.get("TOKEN_URL")
         )
         resolved_token_scope = (
             token_scope
             or auth_config.get("token_scope")
             or os.environ.get("SPECDRIFT_TOKEN_SCOPE")
+            or os.environ.get("API_TOKEN_SCOPE")
             or os.environ.get("TOKEN_SCOPE")
         )
         resolved_token_audience = (
             token_audience
             or auth_config.get("token_audience")
             or os.environ.get("SPECDRIFT_TOKEN_AUDIENCE")
+            or os.environ.get("API_TOKEN_AUDIENCE")
             or os.environ.get("TOKEN_AUDIENCE")
         )
 

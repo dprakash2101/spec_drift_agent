@@ -88,6 +88,15 @@ Primary env vars:
 - `SPECDRIFT_TOKEN_SCOPE`
 - `SPECDRIFT_TOKEN_AUDIENCE`
 
+Supported aliases (also accepted):
+
+- `API_AUTH_TYPE`
+- `API_AUTH_TOKEN` / `API_BEARER_TOKEN`
+- `API_BASIC_USERNAME` / `API_BASIC_PASSWORD`
+- `API_KEY` / `API_KEY_NAME` / `API_KEY_LOCATION`
+- `API_CLIENT_ID` / `API_CLIENT_SECRET`
+- `API_TOKEN_URL` / `API_TOKEN_SCOPE` / `API_TOKEN_AUDIENCE`
+
 ## Auth Examples
 
 Bearer:
@@ -144,3 +153,8 @@ ruff check src/
 ## License
 
 [MIT License](https://github.com/dprakash2101/spec_drift_agent/blob/main/LICENSE)
+
+## Authors
+
+[Devi Prakash Kandikonda](https://github.com/dprakash2101)
+[Vamsi Krishna Kandikonda](https://github.com/vamsi-31)
