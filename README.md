@@ -4,70 +4,143 @@ Autonomous agent for detecting and reconciling drift between real API behavior a
 
 ## Features
 
-- **Request Execution**: Execute HTTP requests against API endpoints
-- **Deterministic Diff Engine**: Compare responses against OpenAPI schemas (no LLM)
-- **Semantic Reconciliation**: LLM-powered reasoning for ambiguous cases
-- **Decision Engine**: Classify drift as UPDATE_SPEC, API_BUG, or NEEDS_REVIEW
-- **Spec Updater**: Generate minimal OpenAPI fragment updates
+- Request execution against live APIs
+- Deterministic schema diffing (no LLM in diff engine)
+- LLM semantic reconciliation for ambiguous drift cases
+- Decision classification: `UPDATE_SPEC`, `API_BUG`, `NEEDS_REVIEW`
+- Config-driven auth support: `bearer`, `basic`, `api-key`, `client-credentials`
 
 ## Installation
 
 ```bash
+# from GitHub
 pip install git+https://github.com/dprakash2101/spec_drift_agent.git
+
+# for local development
+pip install -e ".[dev,test-api]"
 ```
 
-> [!NOTE]
-> Installation via PyPI (`pip install specdrift`) will be available soon.
-
-## Usage
+## Quick Start
 
 ```bash
-# Analyze an endpoint against its spec
-specdrift analyze --spec openapi.yaml --endpoint https://api.example.com/users
+# terminal 1
+python -m uvicorn test_api.main:app --reload --port 8000
 
-# Run with the test API (dogfooding)
-cd test_api && uvicorn main:app --reload --port 8000
-specdrift analyze --spec test_api/openapi_spec.yaml --endpoint http://localhost:8000
+# terminal 2
+specdrift analyze --spec test_api/openapi_spec.yaml --endpoint http://localhost:8000 --path /health
 ```
+
+If `specdrift` is not recognized:
+
+```bash
+python -m pip install -e ".[dev,test-api]"
+```
+
+Or run as module:
+
+```bash
+# Linux/macOS
+PYTHONPATH=src python -m specdrift.cli analyze --spec test_api/openapi_spec.yaml --endpoint http://localhost:8000 --path /health
+
+# PowerShell
+$env:PYTHONPATH = "src"
+python -m specdrift.cli analyze --spec test_api/openapi_spec.yaml --endpoint http://localhost:8000 --path /health
+```
+
+## CLI Usage
+
+```bash
+specdrift analyze --spec openapi.yaml --endpoint https://api.example.com --path /users
+```
+
+Notes:
+
+- You can pass query parameters in `--path` (example: `/users?active=true`) or with repeated `--query key=value`.
+- CLI values override config values.
+
+## Config + Environment Variables
+
+Use `spec_drift_agent.config.json` and `.env` (examples are included):
+
+- `spec_drift_agent.config.example.json`
+- `.env.example`
+
+Run:
+
+```bash
+specdrift analyze --config spec_drift_agent.config.json --env-file .env
+```
+
+You can also set auth values directly in terminal environment variables.
+
+Primary env vars:
+
+- `SPECDRIFT_AUTH_TYPE`
+- `SPECDRIFT_AUTH_TOKEN`
+- `SPECDRIFT_BASIC_USERNAME`
+- `SPECDRIFT_BASIC_PASSWORD`
+- `SPECDRIFT_API_KEY`
+- `SPECDRIFT_API_KEY_NAME`
+- `SPECDRIFT_API_KEY_LOCATION`
+- `SPECDRIFT_CLIENT_ID`
+- `SPECDRIFT_CLIENT_SECRET`
+- `SPECDRIFT_TOKEN_URL`
+- `SPECDRIFT_TOKEN_SCOPE`
+- `SPECDRIFT_TOKEN_AUDIENCE`
+
+## Auth Examples
+
+Bearer:
+
+```bash
+specdrift analyze --spec test_api/openapi_spec.yaml --endpoint http://localhost:8000 --path /auth/bearer-protected --auth-type bearer --auth test-bearer-token
+```
+
+API key (header):
+
+```bash
+specdrift analyze --spec test_api/openapi_spec.yaml --endpoint http://localhost:8000 --path /auth/apikey-protected --auth-type api-key --api-key test-api-key --api-key-name X-API-Key --api-key-location header
+```
+
+Client credentials:
+
+```bash
+specdrift analyze --spec test_api/openapi_spec.yaml --endpoint http://localhost:8000 --path /auth/client-credentials-protected --auth-type client-credentials --client-id test-client-id --client-secret test-client-secret --token-url http://localhost:8000/auth/token
+```
+
+## Test API Scenarios
+
+Auth scenarios support both match and drift responses:
+
+- Match: call endpoint normally.
+- Drift: call endpoint with `?drift=true`.
+
+Examples:
+
+```bash
+specdrift analyze --spec test_api/openapi_spec.yaml --endpoint http://localhost:8000 --path /auth/bearer-protected?drift=true --auth-type bearer --auth test-bearer-token
+```
+
+```bash
+specdrift analyze --spec test_api/openapi_spec.yaml --endpoint http://localhost:8000 --path /auth/apikey-protected --query drift=true --auth-type api-key --api-key test-api-key --api-key-name X-API-Key --api-key-location header
+```
+
+More scenario commands are documented in `test_api/scenarios.md`.
 
 ## Development
 
 ```bash
-# Install with dev dependencies
 pip install -e ".[dev,test-api]"
-
-# Run tests
-pytest
-
-# Type checking
+pytest tests/
 mypy src/
-
-# Linting
 ruff check src/
 ```
 
-## Future Roadmap
-
-- **Full Spec Generation**: Automatically generate a complete, valid OpenAPI spec file merging all discovered changes.
-- **CI/CD Integration**: GitHub Actions and GitLab CI support.
-- **Live Spec Comparison & Request Drift**: Fetch live OpenAPI/Swagger definition to detect changes in request contracts (headers, query parameters).
-- **History Tracking**: Track drift over time to identify regression patterns.
-
 ## Documentation
 
-- **[Project Walkthrough](walkthrough.md)**: Detailed step-by-step testing instructions and scenario demonstrations.
+- [Project Walkthrough](walkthrough.md)
+- [Test API Scenarios](test_api/scenarios.md)
 
 ## License
 
 [MIT License](https://github.com/dprakash2101/spec_drift_agent/blob/main/LICENSE)
-
-## Authors
-
-[Devi Prakash Kandikonda](https://github.com/dprakash2101)
-[Vamsi Krishna Kandikonda](https://github.com/vamsi-31)
-
-## Credits
-
-Built with help from:
-- **Antigravity**
-- **Claude Opus**

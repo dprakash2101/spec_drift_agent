@@ -27,6 +27,22 @@ class HttpMethod(str, Enum):
     OPTIONS = "OPTIONS"
 
 
+class AuthType(str, Enum):
+    """Supported authentication types for outbound requests."""
+
+    BEARER = "bearer"
+    BASIC = "basic"
+    API_KEY = "api-key"
+    CLIENT_CREDENTIALS = "client-credentials"
+
+
+class ApiKeyLocation(str, Enum):
+    """Where to send API keys."""
+
+    HEADER = "header"
+    QUERY = "query"
+
+
 class AnomalyType(str, Enum):
     """Types of anomalies detected by the diff engine."""
 
@@ -72,7 +88,18 @@ class RequestConfig(BaseModel):
     query_params: dict[str, str] = Field(default_factory=dict)
     headers: dict[str, str] = Field(default_factory=dict)
     body: Any | None = None
-    auth_token: str | None = None
+    auth_type: AuthType | None = None
+    auth_token: str | None = None  # Backward-compatible bearer token field.
+    basic_username: str | None = None
+    basic_password: str | None = None
+    api_key: str | None = None
+    api_key_name: str = "X-API-Key"
+    api_key_location: ApiKeyLocation = ApiKeyLocation.HEADER
+    client_id: str | None = None
+    client_secret: str | None = None
+    token_url: str | None = None
+    token_scope: str | None = None
+    token_audience: str | None = None
 
 
 class RecordedResponse(BaseModel):

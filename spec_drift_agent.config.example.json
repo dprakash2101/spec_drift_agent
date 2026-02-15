@@ -1,0 +1,19 @@
+{
+  "spec": "test_api/openapi_spec.yaml",
+  "endpoint": "http://localhost:8000",
+  "path": "/users/1",
+  "method": "GET",
+  "status": 200,
+  "headers": {
+    "Accept": "application/json"
+  },
+  "query_params": {},
+  "auth": {
+    "type": "client-credentials",
+    "client_id": "${API_CLIENT_ID}",
+    "client_secret": "${API_CLIENT_SECRET}",
+    "token_url": "${API_TOKEN_URL}",
+    "token_scope": "${API_TOKEN_SCOPE}",
+    "token_audience": "${API_TOKEN_AUDIENCE}"
+  }
+}
