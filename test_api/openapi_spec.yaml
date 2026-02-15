@@ -243,6 +243,131 @@ paths:
               schema:
                 $ref: "#/components/schemas/SearchResponse"
 
+
+  /auth/bearer-protected:
+    get:
+      operationId: bearerProtected
+      summary: Validate bearer auth
+      responses:
+        "200":
+          description: Bearer auth accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - auth_type
+                properties:
+                  status:
+                    type: string
+                  auth_type:
+                    type: string
+        "401":
+          description: Unauthorized
+
+  /auth/apikey-protected:
+    get:
+      operationId: apiKeyProtected
+      summary: Validate API key auth
+      security:
+        - ApiKeyHeader: []
+        - ApiKeyQuery: []
+      parameters:
+        - name: api_key
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: API key accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - auth_type
+                properties:
+                  status:
+                    type: string
+                  auth_type:
+                    type: string
+        "401":
+          description: Unauthorized
+
+  /auth/token:
+    post:
+      operationId: authToken
+      summary: Issue token for client credentials
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - grant_type
+                - client_id
+                - client_secret
+              properties:
+                grant_type:
+                  type: string
+                  example: client_credentials
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+                scope:
+                  type: string
+                audience:
+                  type: string
+      responses:
+        "200":
+          description: Access token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - access_token
+                  - token_type
+                  - expires_in
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                  expires_in:
+                    type: integer
+        "400":
+          description: Invalid grant type
+        "401":
+          description: Invalid credentials
+
+  /auth/client-credentials-protected:
+    get:
+      operationId: clientCredentialsProtected
+      summary: Validate client credentials generated bearer token
+      responses:
+        "200":
+          description: Client credentials token accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - auth_type
+                properties:
+                  status:
+                    type: string
+                  auth_type:
+                    type: string
+        "401":
+          description: Unauthorized
+
   /health:
     get:
       operationId: healthCheck
@@ -266,6 +391,14 @@ components:
     BearerAuth:
       type: http
       scheme: bearer
+    ApiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    ApiKeyQuery:
+      type: apiKey
+      in: query
+      name: api_key
 
   schemas:
     User:

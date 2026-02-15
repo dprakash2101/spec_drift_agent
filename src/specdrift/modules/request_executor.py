@@ -1,78 +1,23 @@
 """HTTP Request Executor Module.
 
-Executes HTTP requests against API endpoints and records responses.
-No retry logic - explicit per requirements.
+Builds request configuration and delegates all non-Gemini outbound API calls
+to the centralized API call component.
 """
 
-import time
 from typing import Any
 
-import httpx
+from specdrift.types import ApiKeyLocation, AuthType, HttpMethod, RecordedResponse, RequestConfig
 
-from specdrift.types import HttpMethod, RecordedResponse, RequestConfig
+from .api_client import ApiCallComponent
 
 
 async def execute_request(
     config: RequestConfig,
     timeout: float = 30.0,
 ) -> RecordedResponse:
-    """Execute an HTTP request and record the response.
-    
-    Args:
-        config: Request configuration including URL, method, headers, etc.
-        timeout: Request timeout in seconds.
-        
-    Returns:
-        RecordedResponse with status, headers, body, and timing.
-        
-    Raises:
-        httpx.HTTPError: If the request fails at the network level.
-    """
-    # Build the full URL with path params
-    url = config.url
-    for param_name, param_value in config.path_params.items():
-        url = url.replace(f"{{{param_name}}}", param_value)
-    
-    # Build headers
-    headers = dict(config.headers)
-    if config.auth_token:
-        headers["Authorization"] = f"Bearer {config.auth_token}"
-    
-    # Execute request with timing
-    start_time = time.perf_counter()
-    
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.request(
-            method=config.method.value,
-            url=url,
-            params=config.query_params or None,
-            headers=headers or None,
-            json=config.body if config.body is not None else None,
-        )
-    
-    elapsed_ms = (time.perf_counter() - start_time) * 1000
-    
-    # Parse response body
-    body: Any
-    content_type = response.headers.get("content-type", "")
-    if "application/json" in content_type:
-        try:
-            body = response.json()
-        except Exception:
-            body = response.text
-    else:
-        body = response.text
-    
-    # Convert headers to dict
-    response_headers = dict(response.headers)
-    
-    return RecordedResponse(
-        status_code=response.status_code,
-        headers=response_headers,
-        body=body,
-        response_time_ms=elapsed_ms,
-        request_config=config,
-    )
+    """Execute an HTTP request via the central API call component."""
+    api_client = ApiCallComponent(timeout=timeout)
+    return await api_client.execute_request(config)
 
 
 def build_request_config(
@@ -83,25 +28,35 @@ def build_request_config(
     query_params: dict[str, str] | None = None,
     headers: dict[str, str] | None = None,
     body: Any = None,
+    auth_type: AuthType | str | None = None,
     auth_token: str | None = None,
+    basic_username: str | None = None,
+    basic_password: str | None = None,
+    api_key: str | None = None,
+    api_key_name: str = "X-API-Key",
+    api_key_location: ApiKeyLocation | str = ApiKeyLocation.HEADER,
+    client_id: str | None = None,
+    client_secret: str | None = None,
+    token_url: str | None = None,
+    token_scope: str | None = None,
+    token_audience: str | None = None,
 ) -> RequestConfig:
-    """Helper to build a RequestConfig.
-    
-    Args:
-        method: HTTP method as string or HttpMethod enum.
-        url: Base URL (can contain {param} placeholders).
-        path_params: Path parameter substitutions.
-        query_params: Query string parameters.
-        headers: Request headers.
-        body: Request body (will be JSON-encoded).
-        auth_token: Bearer token for Authorization header.
-        
-    Returns:
-        Configured RequestConfig instance.
-    """
+    """Helper to build a RequestConfig."""
     if isinstance(method, str):
         method = HttpMethod(method.upper())
-    
+
+    resolved_auth_type: AuthType | None
+    if auth_type is None:
+        resolved_auth_type = AuthType.BEARER if auth_token else None
+    else:
+        resolved_auth_type = AuthType(auth_type)
+
+    resolved_api_key_location = (
+        ApiKeyLocation(api_key_location)
+        if isinstance(api_key_location, str)
+        else api_key_location
+    )
+
     return RequestConfig(
         method=method,
         url=url,
@@ -109,5 +64,16 @@ def build_request_config(
         query_params=query_params or {},
         headers=headers or {},
         body=body,
+        auth_type=resolved_auth_type,
         auth_token=auth_token,
+        basic_username=basic_username,
+        basic_password=basic_password,
+        api_key=api_key,
+        api_key_name=api_key_name,
+        api_key_location=resolved_api_key_location,
+        client_id=client_id,
+        client_secret=client_secret,
+        token_url=token_url,
+        token_scope=token_scope,
+        token_audience=token_audience,
     )
