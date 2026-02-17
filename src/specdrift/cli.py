@@ -51,7 +51,7 @@ def _default(ctx: typer.Context) -> None:
     )
     console.print()
 
-    action = inquirer.select(
+    action: str = inquirer.select(  # type: ignore[attr-defined]
         message="What would you like to do?",
         choices=[
             {"name": "🔍  Scan — Interactive multi-endpoint analysis", "value": "scan"},
@@ -61,7 +61,10 @@ def _default(ctx: typer.Context) -> None:
         pointer="❯",
     ).execute()
 
+    import click
+
     click_app = typer.main.get_command(app)
+    assert isinstance(click_app, click.Group)
     cmd = click_app.get_command(ctx, action)
     if cmd is not None:
         ctx.invoke(cmd)
@@ -856,7 +859,7 @@ def scan(
     endpoint_value = endpoint or config_data.get("endpoint")
 
     if spec_value is None:
-        spec_value = inquirer.filepath(  # type: ignore[assignment]
+        spec_value = inquirer.filepath(  # type: ignore[attr-defined]
             message="Path to OpenAPI spec file:",
             default="",
             validate=lambda p: Path(p).exists(),
@@ -864,7 +867,7 @@ def scan(
         ).execute()
 
     if endpoint_value is None:
-        endpoint_value = inquirer.text(  # type: ignore[assignment]
+        endpoint_value = inquirer.text(  # type: ignore[attr-defined]
             message="Base URL of the API to test:",
             default="http://localhost:8000",
             validate=lambda v: len(v.strip()) > 0,
@@ -890,7 +893,7 @@ def scan(
         selected_model = str(config_data["model"])
         console.print(f"  Using model: [cyan]{selected_model}[/cyan] (from config)\n")
     else:
-        selected_model = inquirer.select(  # type: ignore[assignment]
+        selected_model = inquirer.select(  # type: ignore[attr-defined]
             message="Choose a model:",
             choices=AVAILABLE_MODELS,
             default=AVAILABLE_MODELS[0],
@@ -969,7 +972,7 @@ def scan(
             endpoint_choices.append({"name": label, "value": ep, "enabled": False})
 
         # Ask: validate all or select?
-        action = inquirer.select(  # type: ignore[assignment]
+        validate_action: str = inquirer.select(  # type: ignore[attr-defined]
             message="How do you want to validate?",
             choices=[
                 {"name": "🔍  Validate ALL endpoints", "value": "all"},
@@ -978,14 +981,14 @@ def scan(
             pointer="❯",
         ).execute()
 
-        if action == "all":
+        if validate_action == "all":
             selected_endpoints_data = [
                 {"path": ep.path, "method": ep.method.value}
                 for ep in parsed_spec.endpoints
             ]
             console.print(f"\n  Validating all [cyan]{len(selected_endpoints_data)}[/cyan] endpoints\n")
         else:
-            selected = inquirer.checkbox(  # type: ignore[assignment]
+            selected_endpoints_data = inquirer.checkbox(  # type: ignore[attr-defined]
                 message="Select endpoints (↑↓ navigate, Space toggle, Enter confirm):",
                 choices=[
                     {
@@ -1000,8 +1003,6 @@ def scan(
                 validate=lambda result: len(result) > 0,
                 invalid_message="Select at least one endpoint",
             ).execute()
-
-            selected_endpoints_data = selected  # type: ignore[assignment]
             console.print(f"\n  Selected [cyan]{len(selected_endpoints_data)}[/cyan] endpoints\n")
 
     # ── Step 4: Run analysis with progress bar ────────────────────────────
@@ -1051,7 +1052,7 @@ def scan(
             ep_body = ep_cfg.get("body")
 
             try:
-                report = asyncio.run(
+                ep_report = asyncio.run(
                     analyze_endpoint(
                         spec_path=str(spec_path),
                         endpoint_url=str(endpoint_value),
@@ -1065,7 +1066,7 @@ def scan(
                         **resolved_auth,
                     )
                 )
-                reports.append((label, report, None))
+                reports.append((label, ep_report, None))
             except Exception as e:
                 reports.append((label, None, str(e)))
 
