@@ -1,6 +1,8 @@
 {
   "spec": "test_api/openapi_spec.yaml",
   "endpoint": "http://localhost:8000",
+  "base_url": "http://localhost:8000",
+  "model": "gemini-2.5-flash",
   "path": "/users/1",
   "method": "GET",
   "status": 200,
@@ -15,5 +17,23 @@
     "token_url": "${API_TOKEN_URL}",
     "token_scope": "${API_TOKEN_SCOPE}",
     "token_audience": "${API_TOKEN_AUDIENCE}"
-  }
+  },
+  "endpoints": [
+    {
+      "path": "/users/1",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/health",
+      "method": "GET"
+    },
+    {
+      "path": "/items/1",
+      "method": "GET",
+      "query_params": {
+        "currency": "USD"
+      }
+    }
+  ]
 }

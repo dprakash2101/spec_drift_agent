@@ -9,6 +9,10 @@ Autonomous agent for detecting and reconciling drift between real API behavior a
 - LLM semantic reconciliation for ambiguous drift cases
 - Decision classification: `UPDATE_SPEC`, `API_BUG`, `NEEDS_REVIEW`
 - Config-driven auth support: `bearer`, `basic`, `api-key`, `client-credentials`
+- **Interactive `scan` command** — Codex/Claude Code-style arrow-key navigation
+- **Model selection** — choose Gemini model interactively or via `--model`
+- **`base_url` config** — set once, reference as `${BASE_URL}` in headers/query/body
+- **Multi-endpoint config** — `endpoints` array in JSON for batch validation
 
 ## Installation
 
@@ -23,10 +27,19 @@ pip install -e ".[dev,test-api]"
 ## Quick Start
 
 ```bash
-# terminal 1
+# Set your Gemini API key
+# PowerShell
+$env:GOOGLE_API_KEY = "your-api-key"
+# Linux/macOS
+export GOOGLE_API_KEY="your-api-key"
+
+# Start the test API
 python -m uvicorn test_api.main:app --reload --port 8000
 
-# terminal 2
+# Launch interactive scan (auto-detects config)
+specdrift
+
+# Or analyze a single endpoint
 specdrift analyze --spec test_api/openapi_spec.yaml --endpoint http://localhost:8000 --path /health
 ```
 
@@ -49,8 +62,36 @@ python -m specdrift.cli analyze --spec test_api/openapi_spec.yaml --endpoint htt
 
 ## CLI Usage
 
+### Default: Interactive Scan
+
+Just run `specdrift` — it auto-detects `spec_drift_agent.config.json` and launches an interactive flow:
+
+```bash
+specdrift
+```
+
+The interactive scan walks you through:
+
+1. **Model picker** — arrow-key selection (`gemini-2.5-flash`, `gemini-2.5-pro`)
+2. **Spec analysis** — parses the spec and shows all endpoints in a table
+3. **Endpoint selection** — validate all or multi-select with checkboxes (↑↓ + Space)
+4. **Progress bar** — live spinner + progress bar during analysis
+5. **Results** — color-coded panels per endpoint + summary dashboard
+
+If no config file is present, it prompts for spec path and endpoint URL interactively.
+
+### analyze (single endpoint)
+
 ```bash
 specdrift analyze --spec openapi.yaml --endpoint https://api.example.com --path /users
+specdrift analyze --spec openapi.yaml --endpoint https://api.example.com --path /users --model gemini-2.5-pro
+```
+
+### scan (with explicit options)
+
+```bash
+specdrift scan --spec openapi.yaml --endpoint https://api.example.com
+specdrift scan --config spec_drift_agent.config.json
 ```
 
 Notes:
@@ -64,6 +105,32 @@ Use `spec_drift_agent.config.json` and `.env` (examples are included):
 
 - `spec_drift_agent.config.example.json`
 - `.env.example`
+
+The file is auto-detected when running `specdrift` from the project root.
+
+Config supports:
+
+| Field | Description |
+|---|---|
+| `spec` | Path to OpenAPI spec file |
+| `endpoint` | Base URL of the API |
+| `base_url` | Set once, reference as `${BASE_URL}` in other values |
+| `model` | Default Gemini model (`gemini-2.5-flash`, `gemini-2.5-pro`) |
+| `endpoints` | Array of endpoints for batch validation |
+
+```json
+{
+  "spec": "test_api/openapi_spec.yaml",
+  "endpoint": "http://localhost:8000",
+  "base_url": "http://localhost:8000",
+  "model": "gemini-2.5-flash",
+  "endpoints": [
+    { "path": "/health", "method": "GET" },
+    { "path": "/users/1", "method": "GET", "headers": { "X-Request-ID": "test-123" } },
+    { "path": "/users", "method": "GET" }
+  ]
+}
+```
 
 Run:
 

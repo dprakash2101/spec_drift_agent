@@ -1,0 +1,29 @@
+{
+    "spec": "test_api/openapi_spec.yaml",
+    "endpoint": "http://localhost:8000",
+    "base_url": "http://localhost:8000",
+    "model": "gemini-2.5-flash",
+    "endpoints": [
+        {
+            "path": "/health",
+            "method": "GET",
+            "status": 200
+        },
+        {
+            "path": "/users/1",
+            "method": "GET",
+            "status": 200,
+            "headers": {
+                "X-Request-ID": "test-123"
+            },
+            "query_params": {
+                "include_metadata": "true"
+            }
+        },
+        {
+            "path": "/users",
+            "method": "GET",
+            "status": 200
+        }
+    ]
+}

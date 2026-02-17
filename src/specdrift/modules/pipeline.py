@@ -52,6 +52,7 @@ async def analyze_endpoint(
     token_url: str | None = None,
     token_scope: str | None = None,
     token_audience: str | None = None,
+    model: str | None = None,
 ) -> DriftReport:
     """Analyze a single endpoint for spec drift.
 
@@ -146,6 +147,7 @@ async def analyze_endpoint(
         path=normalized_path,
         method=method,
         expected_status=expected_status,
+        model=model,
     )
 
 
@@ -157,6 +159,7 @@ async def analyze_response(
     path: str,
     method: HttpMethod,
     expected_status: int,
+    model: str | None = None,
 ) -> DriftReport:
     """Analyze a recorded response against a schema.
 
@@ -219,11 +222,14 @@ async def analyze_response(
 
     # Step 8: LLM semantic reconciliation
     logger.info("Step 8: Invoking LLM for semantic reconciliation...")
-    llm_decision = await reconcile_with_llm(
-        openapi_fragment=openapi_fragment,
-        anomaly_summary=anomaly_summary,
-        endpoint_context=endpoint_context,
-    )
+    reconcile_kwargs: dict[str, Any] = {
+        "openapi_fragment": openapi_fragment,
+        "anomaly_summary": anomaly_summary,
+        "endpoint_context": endpoint_context,
+    }
+    if model:
+        reconcile_kwargs["model"] = model
+    llm_decision = await reconcile_with_llm(**reconcile_kwargs)
     logger.info(f"   LLM decision: {llm_decision.decision.value}")
     logger.info(f"   Confidence: {llm_decision.confidence:.0%}")
 
