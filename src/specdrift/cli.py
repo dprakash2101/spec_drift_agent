@@ -3,6 +3,7 @@
 Usage:
     specdrift analyze --spec <path> --endpoint <url> --path <api_path>
     specdrift analyze --config spec_drift_agent.config.json
+    specdrift scan --spec <path> --endpoint <url>
 """
 
 import asyncio
@@ -17,7 +18,9 @@ import typer
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.table import Table
+from rich.text import Text
 
 from specdrift.types import ApiKeyLocation, AuthType, DecisionType, DriftReport, HttpMethod
 
@@ -25,11 +28,54 @@ console = Console()
 app = typer.Typer(
     name="specdrift",
     help="Detect and reconcile drift between API behavior and OpenAPI specs",
-    no_args_is_help=True,
+    invoke_without_command=True,
 )
+
+
+@app.callback()
+def _default(ctx: typer.Context) -> None:
+    """Detect and reconcile drift between API behavior and OpenAPI specs."""
+    if ctx.invoked_subcommand is not None:
+        return
+
+    from InquirerPy import inquirer
+
+    console.print()
+    console.print(
+        Panel(
+            "[bold cyan]SpecDrift[/bold cyan]\n"
+            "[dim]API spec drift detection & reconciliation[/dim]",
+            border_style="cyan",
+            padding=(1, 4),
+        )
+    )
+    console.print()
+
+    action: str = inquirer.select(  # type: ignore[attr-defined]
+        message="What would you like to do?",
+        choices=[
+            {"name": "🔍  Scan — Interactive multi-endpoint analysis", "value": "scan"},
+            {"name": "📡  Analyze — Single endpoint analysis", "value": "analyze"},
+            {"name": "ℹ️   Version — Show version info", "value": "version"},
+        ],
+        pointer="❯",
+    ).execute()
+
+    import click
+
+    click_app = typer.main.get_command(app)
+    assert isinstance(click_app, click.Group)
+    cmd = click_app.get_command(ctx, action)
+    if cmd is not None:
+        ctx.invoke(cmd)
 
 _DEFAULT_CONFIG_FILE = Path("spec_drift_agent.config.json")
 _ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+AVAILABLE_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+]
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -116,6 +162,11 @@ def _load_config(config_path: Path, env_file: Path | None) -> dict[str, Any]:
 
     if not isinstance(raw_config, dict):
         raise ValueError("Config file must contain a JSON object")
+
+    # Inject base_url into environment BEFORE resolving so ${BASE_URL} works
+    raw_base_url = raw_config.get("base_url")
+    if raw_base_url and isinstance(raw_base_url, str):
+        os.environ.setdefault("BASE_URL", raw_base_url)
 
     resolved = _resolve_env_placeholders(raw_config)
     if not isinstance(resolved, dict):
@@ -306,6 +357,11 @@ def analyze(
         "--json",
         "-j",
         help="Output results as JSON",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="Gemini model to use (e.g. gemini-2.5-flash, gemini-2.5-pro)",
     ),
     verbose: bool = typer.Option(
         False,
@@ -522,6 +578,7 @@ def analyze(
                 token_url=resolved_token_url,
                 token_scope=resolved_token_scope,
                 token_audience=resolved_token_audience,
+                model=model or config_data.get("model"),
             )
         )
 
@@ -613,6 +670,532 @@ def _output_rich(report: DriftReport) -> None:
             )
 
         console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# Shared auth resolver (used by both analyze and scan)
+# ---------------------------------------------------------------------------
+
+def _resolve_auth_from_config(
+    config_data: dict[str, Any],
+    *,
+    auth_type: str | None = None,
+    auth_token: str | None = None,
+    basic_username: str | None = None,
+    basic_password: str | None = None,
+    api_key: str | None = None,
+    api_key_name: str | None = None,
+    api_key_location: str | None = None,
+    client_id: str | None = None,
+    client_secret: str | None = None,
+    token_url: str | None = None,
+    token_scope: str | None = None,
+    token_audience: str | None = None,
+) -> dict[str, Any]:
+    """Resolve authentication settings from config + CLI overrides."""
+    auth_config_raw = config_data.get("auth", {})
+    auth_config: dict[str, Any] = auth_config_raw if isinstance(auth_config_raw, dict) else {}
+
+    auth_type_value = (
+        auth_type
+        or auth_config.get("type")
+        or config_data.get("auth_type")
+        or os.environ.get("SPECDRIFT_AUTH_TYPE")
+        or os.environ.get("API_AUTH_TYPE")
+    )
+
+    return {
+        "auth_type": AuthType(auth_type_value) if auth_type_value else None,
+        "auth_token": (
+            auth_token or auth_config.get("auth_token") or auth_config.get("token")
+            or os.environ.get("SPECDRIFT_AUTH_TOKEN") or os.environ.get("API_AUTH_TOKEN")
+            or os.environ.get("AUTH_TOKEN") or os.environ.get("API_BEARER_TOKEN")
+            or os.environ.get("BEARER_TOKEN")
+        ),
+        "basic_username": (
+            basic_username or auth_config.get("basic_username") or auth_config.get("username")
+            or os.environ.get("SPECDRIFT_BASIC_USERNAME") or os.environ.get("API_BASIC_USERNAME")
+            or os.environ.get("BASIC_USERNAME")
+        ),
+        "basic_password": (
+            basic_password or auth_config.get("basic_password") or auth_config.get("password")
+            or os.environ.get("SPECDRIFT_BASIC_PASSWORD") or os.environ.get("API_BASIC_PASSWORD")
+            or os.environ.get("BASIC_PASSWORD")
+        ),
+        "api_key": (
+            api_key or auth_config.get("api_key")
+            or os.environ.get("SPECDRIFT_API_KEY") or os.environ.get("API_KEY")
+        ),
+        "api_key_name": (
+            api_key_name or auth_config.get("api_key_name") or config_data.get("api_key_name")
+            or os.environ.get("SPECDRIFT_API_KEY_NAME") or os.environ.get("API_KEY_NAME")
+            or "X-API-Key"
+        ),
+        "api_key_location": ApiKeyLocation(
+            api_key_location or auth_config.get("api_key_location")
+            or config_data.get("api_key_location")
+            or os.environ.get("SPECDRIFT_API_KEY_LOCATION")
+            or os.environ.get("API_KEY_LOCATION")
+            or ApiKeyLocation.HEADER.value
+        ),
+        "client_id": (
+            client_id or auth_config.get("client_id")
+            or os.environ.get("SPECDRIFT_CLIENT_ID") or os.environ.get("API_CLIENT_ID")
+            or os.environ.get("CLIENT_ID")
+        ),
+        "client_secret": (
+            client_secret or auth_config.get("client_secret")
+            or os.environ.get("SPECDRIFT_CLIENT_SECRET") or os.environ.get("API_CLIENT_SECRET")
+            or os.environ.get("CLIENT_SECRET")
+        ),
+        "token_url": (
+            token_url or auth_config.get("token_url")
+            or os.environ.get("SPECDRIFT_TOKEN_URL") or os.environ.get("API_TOKEN_URL")
+            or os.environ.get("TOKEN_URL")
+        ),
+        "token_scope": (
+            token_scope or auth_config.get("token_scope")
+            or os.environ.get("SPECDRIFT_TOKEN_SCOPE") or os.environ.get("API_TOKEN_SCOPE")
+            or os.environ.get("TOKEN_SCOPE")
+        ),
+        "token_audience": (
+            token_audience or auth_config.get("token_audience")
+            or os.environ.get("SPECDRIFT_TOKEN_AUDIENCE") or os.environ.get("API_TOKEN_AUDIENCE")
+            or os.environ.get("TOKEN_AUDIENCE")
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# scan command — Interactive Codex/Claude Code-style experience
+# ---------------------------------------------------------------------------
+
+@app.command()
+def scan(
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to JSON config file",
+    ),
+    env_file: Path = typer.Option(
+        Path(".env"),
+        "--env-file",
+        help="Path to dotenv file",
+    ),
+    spec: Path | None = typer.Option(
+        None,
+        "--spec",
+        "-s",
+        help="Path to OpenAPI spec file (YAML or JSON)",
+    ),
+    endpoint: str | None = typer.Option(
+        None,
+        "--endpoint",
+        "-e",
+        help="Base URL of the API to test",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="Gemini model (skip interactive picker)",
+    ),
+    auth_type: str | None = typer.Option(None, "--auth-type"),
+    auth_token: str | None = typer.Option(None, "--auth", "-a"),
+    basic_username: str | None = typer.Option(None, "--basic-username"),
+    basic_password: str | None = typer.Option(None, "--basic-password"),
+    api_key: str | None = typer.Option(None, "--api-key"),
+    api_key_name: str | None = typer.Option(None, "--api-key-name"),
+    api_key_location: str | None = typer.Option(None, "--api-key-location"),
+    client_id: str | None = typer.Option(None, "--client-id"),
+    client_secret: str | None = typer.Option(None, "--client-secret"),
+    token_url: str | None = typer.Option(None, "--token-url"),
+    token_scope: str | None = typer.Option(None, "--token-scope"),
+    token_audience: str | None = typer.Option(None, "--token-audience"),
+    output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Interactively scan an OpenAPI spec — pick model, select endpoints, analyze."""
+    from InquirerPy import inquirer
+    from InquirerPy.separator import Separator
+    from specdrift.modules.openapi_parser import load_spec_from_file
+    from specdrift.modules.pipeline import analyze_endpoint
+
+    setup_logging(verbose=verbose)
+
+    # ── Banner ────────────────────────────────────────────────────────────
+    console.print()
+    console.print(
+        Panel(
+            "[bold cyan]SpecDrift Scanner[/bold cyan]\n"
+            "[dim]Interactive API spec drift detection[/dim]",
+            border_style="cyan",
+            padding=(1, 4),
+        )
+    )
+    console.print()
+
+    # ── Load config ───────────────────────────────────────────────────────
+    config_path = config
+    if config_path is None and _DEFAULT_CONFIG_FILE.exists():
+        config_path = _DEFAULT_CONFIG_FILE
+
+    config_data: dict[str, Any] = {}
+    config_base_dir = Path.cwd()
+    if config_path is not None:
+        if not config_path.exists():
+            console.print(f"[red]Error:[/red] Config file not found: {config_path}")
+            raise typer.Exit(1)
+        config_path = config_path.resolve()
+        config_base_dir = config_path.parent
+        try:
+            config_data = _load_config(config_path, env_file)
+        except ValueError as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(1) from exc
+
+    # ── Resolve spec and endpoint (prompt interactively if missing) ──────
+    spec_value = spec or config_data.get("spec")
+    endpoint_value = endpoint or config_data.get("endpoint")
+
+    if spec_value is None:
+        spec_value = inquirer.filepath(  # type: ignore[attr-defined]
+            message="Path to OpenAPI spec file:",
+            default="",
+            validate=lambda p: Path(p).exists(),
+            invalid_message="File not found",
+        ).execute()
+
+    if endpoint_value is None:
+        endpoint_value = inquirer.text(  # type: ignore[attr-defined]
+            message="Base URL of the API to test:",
+            default="http://localhost:8000",
+            validate=lambda v: len(v.strip()) > 0,
+            invalid_message="URL cannot be empty",
+        ).execute()
+
+    try:
+        spec_path = _resolve_path(spec_value, config_base_dir)
+        if not spec_path.exists():
+            raise ValueError(f"Spec file not found: {spec_path}")
+    except (ValueError, TypeError) as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    # ── Step 1: Model selection (arrow-key picker) ────────────────────────
+    console.print("[bold]Step 1:[/bold] Select Gemini model\n")
+
+    selected_model: str
+    if model:
+        selected_model = model
+        console.print(f"  Using model: [cyan]{selected_model}[/cyan] (from --model)\n")
+    elif config_data.get("model"):
+        selected_model = str(config_data["model"])
+        console.print(f"  Using model: [cyan]{selected_model}[/cyan] (from config)\n")
+    else:
+        selected_model = inquirer.select(  # type: ignore[attr-defined]
+            message="Choose a model:",
+            choices=AVAILABLE_MODELS,
+            default=AVAILABLE_MODELS[0],
+            pointer="❯",
+        ).execute()
+        console.print(f"\n  Selected: [cyan]{selected_model}[/cyan]\n")
+
+    # ── Step 2: Parse spec and list endpoints ─────────────────────────────
+    console.print("[bold]Step 2:[/bold] Analyzing OpenAPI spec\n")
+
+    with console.status("[cyan]Parsing specification...[/cyan]", spinner="dots"):
+        parsed_spec = load_spec_from_file(str(spec_path))
+
+    console.print(f"  Spec: [bold]{parsed_spec.title}[/bold] v{parsed_spec.version}")
+    console.print(f"  Endpoints found: [cyan]{len(parsed_spec.endpoints)}[/cyan]\n")
+
+    # Show endpoints table
+    ep_table = Table(
+        title="📡 Discovered Endpoints",
+        show_header=True,
+        header_style="bold magenta",
+        border_style="dim",
+        padding=(0, 1),
+    )
+    ep_table.add_column("#", style="dim", width=4)
+    ep_table.add_column("Method", style="bold", width=8)
+    ep_table.add_column("Path")
+    ep_table.add_column("Operation ID", style="dim")
+
+    for i, ep in enumerate(parsed_spec.endpoints, 1):
+        method_colors = {
+            "GET": "green", "POST": "yellow", "PUT": "blue",
+            "PATCH": "magenta", "DELETE": "red", "HEAD": "cyan", "OPTIONS": "white",
+        }
+        color = method_colors.get(ep.method.value, "white")
+        ep_table.add_row(
+            str(i),
+            f"[{color}]{ep.method.value}[/{color}]",
+            ep.path,
+            ep.operation_id or "—",
+        )
+    console.print(ep_table)
+    console.print()
+
+    # ── Step 3: Endpoint selection (fuzzy multi-select) ───────────────────
+    console.print("[bold]Step 3:[/bold] Select endpoints to validate\n")
+
+    # Build choices for multi-endpoint config or interactive selection
+    config_endpoints = config_data.get("endpoints", [])
+
+    if config_endpoints and isinstance(config_endpoints, list):
+        # Config-driven mode: use endpoints from config JSON
+        console.print("  [dim]Using endpoints from config file[/dim]\n")
+        selected_endpoints_data: list[dict[str, Any]] = []
+        for ep_cfg in config_endpoints:
+            if not isinstance(ep_cfg, dict) or "path" not in ep_cfg:
+                continue
+            selected_endpoints_data.append(ep_cfg)
+
+        if not selected_endpoints_data:
+            console.print("[red]Error:[/red] No valid endpoints in config 'endpoints' array")
+            raise typer.Exit(1)
+
+        # Show what we're going to validate
+        for ep_cfg in selected_endpoints_data:
+            m = ep_cfg.get("method", "GET").upper()
+            p = ep_cfg.get("path", "")
+            console.print(f"  • {m} {p}")
+        console.print()
+
+    else:
+        # Interactive mode: let user pick with arrow keys + checkbox
+        endpoint_choices = []
+        for ep in parsed_spec.endpoints:
+            label = f"{ep.method.value:7s} {ep.path}"
+            endpoint_choices.append({"name": label, "value": ep, "enabled": False})
+
+        # Ask: validate all or select?
+        validate_action: str = inquirer.select(  # type: ignore[attr-defined]
+            message="How do you want to validate?",
+            choices=[
+                {"name": "🔍  Validate ALL endpoints", "value": "all"},
+                {"name": "✅  Select specific endpoints", "value": "select"},
+            ],
+            pointer="❯",
+        ).execute()
+
+        if validate_action == "all":
+            selected_endpoints_data = [
+                {"path": ep.path, "method": ep.method.value}
+                for ep in parsed_spec.endpoints
+            ]
+            console.print(f"\n  Validating all [cyan]{len(selected_endpoints_data)}[/cyan] endpoints\n")
+        else:
+            selected_endpoints_data = inquirer.checkbox(  # type: ignore[attr-defined]
+                message="Select endpoints (↑↓ navigate, Space toggle, Enter confirm):",
+                choices=[
+                    {
+                        "name": f"{ep.method.value:7s} {ep.path}",
+                        "value": {"path": ep.path, "method": ep.method.value},
+                    }
+                    for ep in parsed_spec.endpoints
+                ],
+                pointer="❯",
+                enabled_symbol="◉",
+                disabled_symbol="○",
+                validate=lambda result: len(result) > 0,
+                invalid_message="Select at least one endpoint",
+            ).execute()
+            console.print(f"\n  Selected [cyan]{len(selected_endpoints_data)}[/cyan] endpoints\n")
+
+    # ── Step 4: Run analysis with progress bar ────────────────────────────
+    console.print("[bold]Step 4:[/bold] Running drift analysis\n")
+
+    resolved_auth = _resolve_auth_from_config(
+        config_data,
+        auth_type=auth_type,
+        auth_token=auth_token,
+        basic_username=basic_username,
+        basic_password=basic_password,
+        api_key=api_key,
+        api_key_name=api_key_name,
+        api_key_location=api_key_location,
+        client_id=client_id,
+        client_secret=client_secret,
+        token_url=token_url,
+        token_scope=token_scope,
+        token_audience=token_audience,
+    )
+
+    global_headers = _ensure_string_dict(config_data.get("headers"), "headers")
+    global_query = _ensure_string_dict(config_data.get("query_params"), "query_params")
+
+    reports: list[tuple[str, DriftReport | None, str | None]] = []  # (label, report, error)
+    total = len(selected_endpoints_data)
+
+    with Progress(
+        SpinnerColumn(style="cyan"),
+        TextColumn("[bold]{task.description}[/bold]"),
+        BarColumn(bar_width=30, complete_style="cyan", finished_style="green"),
+        TaskProgressColumn(),
+        console=console,
+    ) as progress:
+        task_id = progress.add_task("Analyzing endpoints...", total=total)
+
+        for ep_cfg in selected_endpoints_data:
+            ep_path = ep_cfg.get("path", "")
+            ep_method = ep_cfg.get("method", "GET").upper()
+            ep_status = ep_cfg.get("status", 200)
+            label = f"{ep_method} {ep_path}"
+            progress.update(task_id, description=f"Analyzing {label}")
+
+            # Per-endpoint overrides for headers/query/body
+            ep_headers = {**global_headers, **_ensure_string_dict(ep_cfg.get("headers"), "headers")}
+            ep_query = {**global_query, **_ensure_string_dict(ep_cfg.get("query_params"), "query_params")}
+            ep_body = ep_cfg.get("body")
+
+            try:
+                ep_report = asyncio.run(
+                    analyze_endpoint(
+                        spec_path=str(spec_path),
+                        endpoint_url=str(endpoint_value),
+                        path=ep_path,
+                        method=HttpMethod(ep_method),
+                        expected_status=int(ep_status),
+                        headers=ep_headers or None,
+                        query_params=ep_query or None,
+                        body=ep_body,
+                        model=selected_model,
+                        **resolved_auth,
+                    )
+                )
+                reports.append((label, ep_report, None))
+            except Exception as e:
+                reports.append((label, None, str(e)))
+
+            progress.advance(task_id)
+
+    console.print()
+
+    # ── Step 5: Display results ───────────────────────────────────────────
+    console.print("[bold]Step 5:[/bold] Results\n")
+
+    if output_json:
+        results_json = []
+        for label, report, error in reports:
+            if report:
+                results_json.append({
+                    "endpoint": label,
+                    "report": json.loads(report.model_dump_json()),
+                })
+            else:
+                results_json.append({"endpoint": label, "error": error})
+        print(json.dumps(results_json, indent=2))
+        return
+
+    # Per-endpoint result panels
+    for label, report, error in reports:
+        if error:
+            console.print(
+                Panel(
+                    f"[red]✗ Error[/red]\n\n{error}",
+                    title=f"[bold]{label}[/bold]",
+                    border_style="red",
+                    padding=(0, 2),
+                )
+            )
+        elif report and report.has_drift:
+            decision = report.llm_decision
+            decision_text = ""
+            if decision:
+                decision_color = {
+                    DecisionType.UPDATE_SPEC: "yellow",
+                    DecisionType.API_BUG: "red",
+                    DecisionType.NEEDS_REVIEW: "blue",
+                }.get(decision.decision, "white")
+                decision_text = (
+                    f"[{decision_color}]{decision.decision.value}[/{decision_color}]  "
+                    f"Confidence: {decision.confidence:.0%}"
+                )
+                if decision.notes_for_humans:
+                    decision_text += "\n" + "\n".join(f"  • {n}" for n in decision.notes_for_humans)
+            anomaly_count = (
+                report.anomaly_summary.total_anomalies if report.anomaly_summary else 0
+            )
+            console.print(
+                Panel(
+                    f"[yellow]⚠ Drift detected[/yellow]  "
+                    f"({anomaly_count} anomalies)\n\n{decision_text}",
+                    title=f"[bold]{label}[/bold]",
+                    border_style="yellow",
+                    padding=(0, 2),
+                )
+            )
+        elif report:
+            console.print(
+                Panel(
+                    "[green]✓ No drift[/green]  —  API matches the specification",
+                    title=f"[bold]{label}[/bold]",
+                    border_style="green",
+                    padding=(0, 2),
+                )
+            )
+    console.print()
+
+    # ── Summary dashboard ─────────────────────────────────────────────────
+    summary_table = Table(
+        title="📊 Scan Summary",
+        show_header=True,
+        header_style="bold white",
+        border_style="dim",
+        padding=(0, 1),
+    )
+    summary_table.add_column("Endpoint", style="bold")
+    summary_table.add_column("Status", justify="center")
+    summary_table.add_column("Decision", justify="center")
+    summary_table.add_column("Confidence", justify="center")
+    summary_table.add_column("Anomalies", justify="center")
+
+    drift_count = 0
+    ok_count = 0
+    error_count = 0
+
+    for label, report, error in reports:
+        if error:
+            summary_table.add_row(label, "[red]ERROR[/red]", "—", "—", "—")
+            error_count += 1
+        elif report and report.has_drift:
+            decision = report.llm_decision
+            d_label = decision.decision.value if decision else "—"
+            conf = f"{decision.confidence:.0%}" if decision else "—"
+            anoms = str(report.anomaly_summary.total_anomalies) if report.anomaly_summary else "0"
+            summary_table.add_row(
+                label, "[yellow]DRIFT[/yellow]", d_label, conf, anoms,
+            )
+            drift_count += 1
+        elif report:
+            summary_table.add_row(label, "[green]OK[/green]", "—", "—", "0")
+            ok_count += 1
+
+    console.print(summary_table)
+    console.print()
+
+    # Final status
+    parts = []
+    if ok_count:
+        parts.append(f"[green]{ok_count} passed[/green]")
+    if drift_count:
+        parts.append(f"[yellow]{drift_count} drift[/yellow]")
+    if error_count:
+        parts.append(f"[red]{error_count} errors[/red]")
+    console.print(
+        Panel(
+            "  ".join(parts),
+            title="Result",
+            border_style="cyan",
+            padding=(0, 2),
+        )
+    )
+
+    if drift_count or error_count:
+        raise typer.Exit(1)
 
 
 @app.command()
