@@ -22,7 +22,15 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from rich.table import Table
 from rich.text import Text
 
-from specdrift.types import ApiKeyLocation, AuthType, DecisionType, DriftReport, HttpMethod
+from specdrift.types import (
+    ApiKeyLocation,
+    AuthType,
+    DecisionType,
+    DriftReport,
+    HttpMethod,
+    Anomaly,
+    AnomalySummary,
+)
 
 console = Console()
 app = typer.Typer(
@@ -225,6 +233,50 @@ def _resolve_path(value: Path | str, base_dir: Path) -> Path:
     if path_value.is_absolute():
         return path_value
     return base_dir / path_value
+
+
+def _build_combined_reconciliation_payload(
+    reports: list[tuple[str, DriftReport]],
+) -> tuple[dict[str, Any], AnomalySummary, str]:
+    """Build a single reconciliation payload for all drifting endpoints."""
+    combined_fragment: dict[str, Any] = {"paths": {}}
+    combined_anomalies: list[Anomaly] = []
+    endpoint_labels: list[str] = []
+    response_sample: dict[str, Any] = {}
+
+    for label, report in reports:
+        endpoint_labels.append(label)
+        if report.updated_spec_fragment and report.updated_spec_fragment.get("paths"):
+            combined_fragment["paths"].update(report.updated_spec_fragment["paths"])
+
+        if report.anomaly_summary:
+            for anomaly in report.anomaly_summary.anomalies:
+                combined_anomalies.append(
+                    Anomaly(
+                        anomaly_type=anomaly.anomaly_type,
+                        json_path=f"{label}:{anomaly.json_path}",
+                        expected=anomaly.expected,
+                        actual=anomaly.actual,
+                        message=anomaly.message,
+                    )
+                )
+            response_sample[label] = report.anomaly_summary.response_sample
+
+    anomalies_by_type: dict[Any, int] = {}
+    for anomaly in combined_anomalies:
+        anomalies_by_type[anomaly.anomaly_type] = anomalies_by_type.get(anomaly.anomaly_type, 0) + 1
+
+    combined_summary = AnomalySummary(
+        total_anomalies=len(combined_anomalies),
+        anomalies_by_type=anomalies_by_type,
+        anomalies=combined_anomalies,
+        response_sample=response_sample,
+    )
+
+    endpoint_context = "Multi-endpoint scan with drift:\n" + "\n".join(
+        f"- {endpoint_label}" for endpoint_label in endpoint_labels
+    )
+    return combined_fragment, combined_summary, endpoint_context
 
 
 @app.command()
@@ -813,13 +865,20 @@ def scan(
     token_scope: str | None = typer.Option(None, "--token-scope"),
     token_audience: str | None = typer.Option(None, "--token-audience"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON"),
+    update_spec: bool = typer.Option(
+        False,
+        "--update-spec",
+        help="Apply consolidated UPDATE_SPEC recommendation to the spec file",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
     """Interactively scan an OpenAPI spec — pick model, select endpoints, analyze."""
     from InquirerPy import inquirer
     from InquirerPy.separator import Separator
-    from specdrift.modules.openapi_parser import load_spec_from_file
+    from specdrift.modules.openapi_parser import load_spec_from_file, find_matching_endpoint
     from specdrift.modules.pipeline import analyze_endpoint
+    from specdrift.modules.semantic_reconciler import reconcile_with_llm
+    from specdrift.modules.spec_updater import apply_updates, save_spec
 
     setup_logging(verbose=verbose)
 
@@ -1052,6 +1111,20 @@ def scan(
             ep_body = ep_cfg.get("body")
 
             try:
+                parsed_endpoint = find_matching_endpoint(parsed_spec, ep_path, HttpMethod(ep_method))
+                endpoint_fragment = None
+                if parsed_endpoint:
+                    path_item = parsed_spec.raw_spec.get("paths", {}).get(parsed_endpoint.path, {})
+                    method_lower = ep_method.lower()
+                    if method_lower in path_item:
+                        endpoint_fragment = {
+                            "paths": {
+                                parsed_endpoint.path: {
+                                    method_lower: path_item[method_lower],
+                                }
+                            }
+                        }
+
                 ep_report = asyncio.run(
                     analyze_endpoint(
                         spec_path=str(spec_path),
@@ -1063,9 +1136,11 @@ def scan(
                         query_params=ep_query or None,
                         body=ep_body,
                         model=selected_model,
+                        invoke_llm=False,
                         **resolved_auth,
                     )
                 )
+                ep_report.updated_spec_fragment = endpoint_fragment
                 reports.append((label, ep_report, None))
             except Exception as e:
                 reports.append((label, None, str(e)))
@@ -1074,6 +1149,51 @@ def scan(
 
     console.print()
 
+    drift_reports = [
+        (label, report)
+        for label, report, error in reports
+        if error is None and report is not None and report.has_drift
+    ]
+
+    if drift_reports:
+        console.print("[bold]Step 5:[/bold] Running consolidated LLM reconciliation\n")
+        combined_fragment, combined_summary, endpoint_context = _build_combined_reconciliation_payload(
+            drift_reports
+        )
+        try:
+            consolidated_decision = asyncio.run(
+                reconcile_with_llm(
+                    openapi_fragment=combined_fragment,
+                    anomaly_summary=combined_summary,
+                    endpoint_context=endpoint_context,
+                    model=selected_model,
+                )
+            )
+            for _, report in drift_reports:
+                report.llm_decision = consolidated_decision
+                report.auto_update_recommended = (
+                    consolidated_decision.decision == DecisionType.UPDATE_SPEC
+                    and consolidated_decision.confidence >= 0.85
+                )
+
+            if update_spec and consolidated_decision.decision == DecisionType.UPDATE_SPEC:
+                fragment = consolidated_decision.updated_openapi_fragment
+                if fragment:
+                    updated_spec = apply_updates(parsed_spec.raw_spec, fragment)
+                    save_spec(updated_spec, str(spec_path))
+                    console.print(
+                        f"[green]Updated spec saved to[/green] [bold]{spec_path}[/bold]"
+                    )
+                else:
+                    console.print(
+                        "[yellow]LLM returned UPDATE_SPEC without fragment; spec not modified.[/yellow]"
+                    )
+        except Exception as exc:
+            error_message = f"Consolidated reconciliation failed: {exc}"
+            reports = [
+                (lbl, rpt, error_message if (rpt is not None and rpt.has_drift and err is None) else err)
+                for lbl, rpt, err in reports
+            ]
     # ── Step 5: Display results ───────────────────────────────────────────
     console.print("[bold]Step 5:[/bold] Results\n")
 

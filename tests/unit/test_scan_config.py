@@ -7,10 +7,12 @@ from pathlib import Path
 import pytest
 
 from specdrift.cli import (
+    _build_combined_reconciliation_payload,
     _ensure_string_dict,
     _load_config,
     _resolve_env_placeholders,
 )
+from specdrift.types import Anomaly, AnomalySummary, AnomalyType, DriftReport
 
 
 class TestBaseUrlConfig:
@@ -229,3 +231,59 @@ class TestCliCommands:
         click_app = typer.main.get_command(app)
         commands = list(click_app.commands.keys())
         assert "version" in commands
+
+
+class TestConsolidatedReconciliationPayload:
+    """Tests for merged multi-endpoint reconciliation payload creation."""
+
+    def test_build_payload_merges_paths_and_anomalies(self) -> None:
+        report_a = DriftReport(
+            endpoint="GET /users/1",
+            spec_path="openapi.yaml",
+            has_drift=True,
+            updated_spec_fragment={"paths": {"/users/{id}": {"get": {"responses": {}}}}},
+            anomaly_summary=AnomalySummary(
+                total_anomalies=1,
+                anomalies_by_type={AnomalyType.ADDITIONAL_FIELD: 1},
+                anomalies=[
+                    Anomaly(
+                        anomaly_type=AnomalyType.ADDITIONAL_FIELD,
+                        json_path="$.nickname",
+                        expected="absent",
+                        actual="Sam",
+                        message="extra field",
+                    )
+                ],
+                response_sample={"id": 1, "nickname": "Sam"},
+            ),
+        )
+        report_b = DriftReport(
+            endpoint="GET /health",
+            spec_path="openapi.yaml",
+            has_drift=True,
+            updated_spec_fragment={"paths": {"/health": {"get": {"responses": {}}}}},
+            anomaly_summary=AnomalySummary(
+                total_anomalies=1,
+                anomalies_by_type={AnomalyType.TYPE_MISMATCH: 1},
+                anomalies=[
+                    Anomaly(
+                        anomaly_type=AnomalyType.TYPE_MISMATCH,
+                        json_path="$.status",
+                        expected="string",
+                        actual=200,
+                        message="wrong type",
+                    )
+                ],
+                response_sample={"status": 200},
+            ),
+        )
+
+        fragment, summary, context = _build_combined_reconciliation_payload(
+            [("GET /users/1", report_a), ("GET /health", report_b)]
+        )
+
+        assert "/users/{id}" in fragment["paths"]
+        assert "/health" in fragment["paths"]
+        assert summary.total_anomalies == 2
+        assert any(anom.json_path.startswith("GET /users/1:") for anom in summary.anomalies)
+        assert "GET /health" in context

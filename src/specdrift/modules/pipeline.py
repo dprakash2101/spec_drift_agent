@@ -53,6 +53,7 @@ async def analyze_endpoint(
     token_scope: str | None = None,
     token_audience: str | None = None,
     model: str | None = None,
+    invoke_llm: bool = True,
 ) -> DriftReport:
     """Analyze a single endpoint for spec drift.
 
@@ -148,6 +149,7 @@ async def analyze_endpoint(
         method=method,
         expected_status=expected_status,
         model=model,
+        invoke_llm=invoke_llm,
     )
 
 
@@ -160,6 +162,7 @@ async def analyze_response(
     method: HttpMethod,
     expected_status: int,
     model: str | None = None,
+    invoke_llm: bool = True,
 ) -> DriftReport:
     """Analyze a recorded response against a schema.
 
@@ -214,6 +217,16 @@ async def analyze_response(
     logger.info("Step 6: Summarizing anomalies for LLM...")
     anomaly_summary = summarize_anomalies(anomalies, response.body)
     logger.info(f"   Anomaly types: {list(anomaly_summary.anomalies_by_type.keys())}")
+
+    if not invoke_llm:
+        logger.info("   LLM invocation deferred by caller")
+        return DriftReport(
+            endpoint=endpoint_context,
+            spec_path=spec_path,
+            anomaly_summary=anomaly_summary,
+            has_drift=True,
+            auto_update_recommended=False,
+        )
 
     # Step 7: Get the OpenAPI fragment for this endpoint
     logger.info("Step 7: Extracting OpenAPI fragment...")
