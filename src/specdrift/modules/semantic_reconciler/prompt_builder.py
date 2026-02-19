@@ -30,20 +30,10 @@ def build_reconciliation_prompt(
     anomaly_summary: AnomalySummary,
     endpoint_context: str,
 ) -> str:
-    """Build a prompt for the LLM to analyze spec drift.
-    
-    Args:
-        openapi_fragment: Relevant portion of the OpenAPI spec.
-        anomaly_summary: Summary of detected anomalies.
-        endpoint_context: Context about the endpoint (path, method).
-        
-    Returns:
-        Formatted prompt string.
-    """
-    # Format anomalies for readability
+    """Build a prompt for single-endpoint LLM reconciliation."""
     anomalies_text = format_anomalies(anomaly_summary)
-    
-    prompt = f"""## Endpoint Context
+
+    return f"""## Endpoint Context
 {endpoint_context}
 
 ## Current OpenAPI Specification Fragment
@@ -60,15 +50,47 @@ def build_reconciliation_prompt(
 {anomalies_text}
 
 ## Task
-Analyze the anomalies above and decide:
+Analyze this single endpoint and decide:
 1. Should the OpenAPI spec be updated? (UPDATE_SPEC)
 2. Is this an API bug? (API_BUG)
 3. Does this need human review? (NEEDS_REVIEW)
 
-For UPDATE_SPEC decisions, provide the minimal updated OpenAPI fragment.
+For UPDATE_SPEC decisions, provide the minimal updated OpenAPI fragment for this endpoint only.
 Consider backward compatibility and real-world API evolution patterns."""
 
-    return prompt
+
+def build_consolidated_reconciliation_prompt(
+    openapi_fragment: dict[str, Any],
+    anomaly_summary: AnomalySummary,
+    endpoint_context: str,
+) -> str:
+    """Build a prompt for multi-endpoint consolidated LLM reconciliation."""
+    anomalies_text = format_anomalies(anomaly_summary)
+
+    return f"""## Endpoint Group Context
+{endpoint_context}
+
+## Current OpenAPI Specification Fragment (multiple endpoints)
+```json
+{json.dumps(openapi_fragment, indent=2)}
+```
+
+## Observed Response Samples (keyed by endpoint)
+```json
+{json.dumps(anomaly_summary.response_sample, indent=2)}
+```
+
+## Detected Anomalies Across Endpoints ({anomaly_summary.total_anomalies} total)
+{anomalies_text}
+
+## Task
+Analyze all endpoint deviations together and decide:
+1. Should the OpenAPI spec be updated? (UPDATE_SPEC)
+2. Are these API bugs? (API_BUG)
+3. Does this need human review? (NEEDS_REVIEW)
+
+For UPDATE_SPEC decisions, provide a minimal updated OpenAPI fragment that may include multiple endpoints.
+Use cross-endpoint consistency as evidence, but avoid over-generalizing changes."""
 
 
 def format_anomalies(summary: AnomalySummary) -> str:

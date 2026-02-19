@@ -13,7 +13,11 @@ from google.genai import types
 
 from specdrift.types import AnomalySummary, LLMDecision, DecisionType, ChangeType, ChangeInstruction
 
-from .prompt_builder import build_reconciliation_prompt, get_system_prompt
+from .prompt_builder import (
+    build_consolidated_reconciliation_prompt,
+    build_reconciliation_prompt,
+    get_system_prompt,
+)
 
 
 # Set up logging
@@ -69,6 +73,7 @@ async def reconcile_with_llm(
     endpoint_context: str,
     model: str = DEFAULT_MODEL,
     api_key: str | None = None,
+    consolidated: bool = False,
 ) -> LLMDecision:
     """Use the LLM to reconcile spec drift.
     
@@ -80,6 +85,7 @@ async def reconcile_with_llm(
         endpoint_context: Context about the endpoint (path, method).
         model: Gemini model to use.
         api_key: Optional API key (uses GOOGLE_API_KEY env var if not provided).
+        consolidated: Whether this is a multi-endpoint consolidated reconciliation call.
         
     Returns:
         LLMDecision with classification and proposed changes.
@@ -98,11 +104,18 @@ async def reconcile_with_llm(
     logger.debug(f"   Anomalies: {anomaly_summary.total_anomalies}")
     
     # Build the prompt
-    user_prompt = build_reconciliation_prompt(
-        openapi_fragment=openapi_fragment,
-        anomaly_summary=anomaly_summary,
-        endpoint_context=endpoint_context,
-    )
+    if consolidated:
+        user_prompt = build_consolidated_reconciliation_prompt(
+            openapi_fragment=openapi_fragment,
+            anomaly_summary=anomaly_summary,
+            endpoint_context=endpoint_context,
+        )
+    else:
+        user_prompt = build_reconciliation_prompt(
+            openapi_fragment=openapi_fragment,
+            anomaly_summary=anomaly_summary,
+            endpoint_context=endpoint_context,
+        )
     
     logger.debug(f"   Prompt length: {len(user_prompt)} chars")
     

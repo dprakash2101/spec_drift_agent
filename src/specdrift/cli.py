@@ -1167,6 +1167,7 @@ def scan(
                     anomaly_summary=combined_summary,
                     endpoint_context=endpoint_context,
                     model=selected_model,
+                    consolidated=True,
                 )
             )
             for _, report in drift_reports:
