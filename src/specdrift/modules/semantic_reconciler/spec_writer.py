@@ -139,9 +139,10 @@ async def generate_spec_updates(
     Returns:
         Structured ``SpecUpdateResult`` with per-section updates.
     """
-    resolved_api_key = api_key or os.environ.get("GOOGLE_API_KEY")
+    # Get API key
+    resolved_api_key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not resolved_api_key:
-        raise ValueError("GOOGLE_API_KEY environment variable not set")
+        raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY environment variable not set")
 
     logger.info("📝 Invoking LLM for spec update generation...")
     logger.debug(f"   Model: {model}")
