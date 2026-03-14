@@ -141,7 +141,7 @@ async def analyze_endpoint(
 
     # Step 4: Run the analysis
     logger.info("Step 4: Running analysis...")
-    return await analyze_response(
+    report = await analyze_response(
         spec_path=spec_path,
         parsed_spec=parsed_spec,
         response=response,
@@ -152,6 +152,49 @@ async def analyze_endpoint(
         model=model,
         update_spec=update_spec,
     )
+
+    # Step 11: Verify the auto-update fix with a fresh API call
+    if report.spec_file_updated:
+        logger.info("Step 11: Verifying spec update with a fresh API call...")
+        try:
+            # 1. Reload the newly updated spec
+            new_parsed_spec = load_spec_from_file(spec_path)
+            
+            # 2. Extract the updated schema
+            new_schema = get_endpoint_schema(new_parsed_spec, normalized_path, method, expected_status)
+            if new_schema is None:
+                raise ValueError("Updated schema could not be loaded")
+            
+            # 3. Make a fresh API call
+            logger.info("   Executing fresh API request...")
+            new_response = await execute_request(config)
+            
+            # 4. Re-run comparison
+            new_status_codes = []
+            matching = find_matching_endpoint(new_parsed_spec, normalized_path, method)
+            if matching:
+                new_status_codes = list(matching.response_schemas.keys())
+            
+            new_anomalies = compare_response_to_schema(
+                response_body=new_response.body,
+                response_status=new_response.status_code,
+                schema=new_schema,
+                expected_status_codes=new_status_codes,
+            )
+            new_anomaly_summary = summarize_anomalies(new_anomalies, new_response.body)
+            
+            # 5. Record verification results
+            report.post_update_anomalies = new_anomaly_summary.total_anomalies
+            report.fix_verified = (new_anomaly_summary.total_anomalies == 0)
+            
+            if report.fix_verified:
+                logger.info("   ✅ Fix verified: Fresh API response matches the updated spec exactly.")
+            else:
+                logger.warning(f"   ⚠️ Fix partial: {report.post_update_anomalies} anomalies remaining.")
+        except Exception as e:
+            logger.error(f"   ✗ Verification failed: {e}")
+
+    return report
 
 
 async def analyze_response(

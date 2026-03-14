@@ -226,6 +226,14 @@ class DriftReport(BaseModel):
     backup_path: str | None = None
     spec_update_result: SpecUpdateResult | None = None
     update_diff: str | None = None
+    fix_verified: bool | None = Field(
+        default=None,
+        description="True if 0 anomalies after update and fresh API call",
+    )
+    post_update_anomalies: int | None = Field(
+        default=None,
+        description="Count of anomalies remaining after update",
+    )
 
 
 # ============================================================================

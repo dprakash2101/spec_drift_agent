@@ -692,6 +692,12 @@ def _output_spec_update(report: DriftReport) -> None:
 
     lines = ["[green bold]📝 Spec Updated[/green bold]\n"]
     lines.append(f"  File:   [cyan]{report.spec_path}[/cyan]")
+    
+    if report.fix_verified is True:
+        lines.append("  Status: [green]✅ Fix Verified (0 anomalies)[/green]")
+    elif report.fix_verified is False:
+        lines.append(f"  Status: [yellow]⚠️ Fix Incomplete ({report.post_update_anomalies} anomalies remaining)[/yellow]")
+        
     if report.backup_path:
         lines.append(f"  Backup: [dim]{report.backup_path}[/dim]")
 
@@ -1244,7 +1250,16 @@ def scan(
             d_label = decision.decision.value if decision else "—"
             conf = f"{decision.confidence:.0%}" if decision else "—"
             anoms = str(report.anomaly_summary.total_anomalies) if report.anomaly_summary else "0"
-            spec_status = "[green]✅[/green]" if report.spec_file_updated else "—"
+            
+            spec_status = "—"
+            if report.spec_file_updated:
+                if report.fix_verified is True:
+                    spec_status = "[green]✅ Verified[/green]"
+                elif report.fix_verified is False:
+                    spec_status = "[yellow]⚠️ Partial[/yellow]"
+                else:
+                    spec_status = "[blue]📝 Updated[/blue]"
+                    
             summary_table.add_row(
                 label, "[yellow]DRIFT[/yellow]", d_label, conf, anoms, spec_status,
             )
