@@ -152,3 +152,159 @@ def save_spec(spec: dict[str, Any], file_path: str) -> None:
     """
     with open(file_path, "w", encoding="utf-8") as f:
         yaml.dump(spec, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+
+# ============================================================================
+# Spec Update — Backup + Apply Sections + Write
+# ============================================================================
+
+
+def update_spec_file(
+    spec_path: str,
+    spec_update_result: "SpecUpdateResult",
+    *,
+    create_backup: bool = True,
+    skip_non_backward_compatible: bool = True,
+) -> tuple[bool, str | None, str]:
+    """Apply LLM-generated section updates to the spec file on disk.
+
+    Creates a timestamped backup, applies each backward-compatible section
+    update, writes the result, and returns a diff.
+
+    Args:
+        spec_path: Path to the OpenAPI YAML/JSON file.
+        spec_update_result: Structured output from the Spec Writer LLM.
+        create_backup: Whether to create a backup before overwriting.
+        skip_non_backward_compatible: Skip sections that aren't backward
+            compatible (default True for safety).
+
+    Returns:
+        Tuple of ``(was_updated, backup_path_or_None, diff_string)``.
+    """
+    import logging
+    from datetime import datetime as dt
+
+    from specdrift.types import SpecUpdateResult  # noqa: F811 (local re-import for type)
+
+    logger = logging.getLogger("specdrift.spec_updater")
+
+    # Load the original spec
+    with open(spec_path, encoding="utf-8") as f:
+        original_yaml_text = f.read()
+    original_spec = yaml.safe_load(original_yaml_text)
+    updated_spec = copy.deepcopy(original_spec)
+
+    # Create backup
+    backup_path: str | None = None
+    if create_backup:
+        timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = f"{spec_path}.bak.{timestamp}"
+        with open(backup_path, "w", encoding="utf-8") as f:
+            f.write(original_yaml_text)
+        logger.info(f"   Backup created: {backup_path}")
+
+    # Apply each section update
+    applied_count = 0
+    skipped_sections: list[str] = []
+
+    for section in spec_update_result.updated_sections:
+        # Gate: backward compatibility
+        if skip_non_backward_compatible and not section.backward_compatible:
+            logger.warning(
+                f"   Skipping non-backward-compatible section: {section.section_path}"
+            )
+            skipped_sections.append(section.section_path)
+            continue
+
+        # Parse the updated YAML for this section
+        try:
+            section_data = yaml.safe_load(section.updated_yaml)
+        except yaml.YAMLError as e:
+            logger.warning(
+                f"   Skipping section {section.section_path}: invalid YAML — {e}"
+            )
+            skipped_sections.append(section.section_path)
+            continue
+
+        # Navigate to the section path and replace
+        if _set_section(updated_spec, section.section_path, section_data):
+            logger.info(f"   ✅ Applied: {section.section_path} — {section.change_summary}")
+            applied_count += 1
+        else:
+            logger.warning(f"   Could not navigate to: {section.section_path}")
+            skipped_sections.append(section.section_path)
+
+    if applied_count == 0:
+        logger.info("   No sections applied — spec file unchanged")
+        return False, backup_path, "No changes applied"
+
+    # Write updated spec
+    save_spec(updated_spec, spec_path)
+    logger.info(f"   Spec written: {spec_path} ({applied_count} sections updated)")
+
+    # Generate diff
+    diff = generate_diff_output(original_spec, updated_spec)
+
+    return True, backup_path, diff
+
+
+def _set_section(spec: dict[str, Any], dot_path: str, value: Any) -> bool:
+    """Navigate a dot-notation path and set the value.
+
+    Handles paths like ``components.schemas.User`` or
+    ``paths./users/{user_id}.get.responses.200``.
+
+    Returns True if the section was found and updated.
+    """
+    parts = _split_dot_path(dot_path)
+    current = spec
+
+    for part in parts[:-1]:
+        if isinstance(current, dict) and part in current:
+            current = current[part]
+        else:
+            return False
+
+    if isinstance(current, dict):
+        current[parts[-1]] = value
+        return True
+    return False
+
+
+def _split_dot_path(dot_path: str) -> list[str]:
+    """Split a dot-notation path, handling paths that start with ``/``.
+
+    Examples::
+
+        "components.schemas.User"  → ["components", "schemas", "User"]
+        "paths./users/{user_id}.get" → ["paths", "/users/{user_id}", "get"]
+        "paths./users.get.responses.200" → ["paths", "/users", "get", "responses", "200"]
+    """
+    parts: list[str] = []
+    current = ""
+
+    for char in dot_path:
+        if char == ".":
+            # Don't split on dots that follow a "/" (path segment start)
+            if current and not current.startswith("/"):
+                parts.append(current)
+                current = ""
+            elif current.startswith("/"):
+                # We're in a path segment like /users/{user_id}
+                # Check if the next segment starts with / too
+                parts.append(current)
+                current = ""
+            else:
+                parts.append(current)
+                current = ""
+        elif char == "/" and not current:
+            # Starting a new path segment
+            current = "/"
+        else:
+            current += char
+
+    if current:
+        parts.append(current)
+
+    return [p for p in parts if p]
+

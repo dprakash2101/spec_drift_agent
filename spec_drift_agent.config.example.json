@@ -3,13 +3,7 @@
   "endpoint": "http://localhost:8000",
   "base_url": "http://localhost:8000",
   "model": "gemini-2.5-flash",
-  "path": "/users/1",
-  "method": "GET",
-  "status": 200,
-  "headers": {
-    "Accept": "application/json"
-  },
-  "query_params": {},
+  "update_spec": false,
   "auth": {
     "type": "client-credentials",
     "client_id": "${API_CLIENT_ID}",
@@ -20,19 +14,52 @@
   },
   "endpoints": [
     {
-      "path": "/users/1",
-      "method": "GET",
-      "status": 200
-    },
-    {
       "path": "/health",
       "method": "GET"
     },
     {
+      "path": "/users/1",
+      "method": "GET",
+      "status": 200,
+      "headers": {
+        "X-Request-ID": "test-123"
+      },
+      "query": {
+        "include_metadata": "true"
+      }
+    },
+    {
+      "path": "/users",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/users",
+      "method": "POST",
+      "status": 201,
+      "body": {
+        "name": "Test User",
+        "email": "test@example.com",
+        "role": "user"
+      },
+      "headers": {
+        "Content-Type": "application/json"
+      }
+    },
+    {
       "path": "/items/1",
       "method": "GET",
-      "query_params": {
+      "query": {
         "currency": "USD"
+      }
+    },
+    {
+      "path": "/search",
+      "method": "POST",
+      "body": {
+        "q": "test",
+        "limit": 10,
+        "offset": 0
       }
     }
   ]

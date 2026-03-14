@@ -171,6 +171,41 @@ class LLMDecision(BaseModel):
 
 
 # ============================================================================
+# Spec Writer Types (LLM Call #2 — Structured Output)
+# ============================================================================
+
+
+class SpecSectionUpdate(BaseModel):
+    """A single updated section of the OpenAPI spec from the Spec Writer."""
+
+    section_path: str = Field(
+        description="Dot-notation path in the spec, e.g. 'components.schemas.User'",
+    )
+    updated_yaml: str = Field(
+        description="The full updated YAML content for this section",
+    )
+    change_summary: str = Field(
+        description="Brief description of what changed",
+    )
+    backward_compatible: bool = Field(
+        description="Whether this change preserves backward compatibility",
+    )
+
+
+class SpecUpdateResult(BaseModel):
+    """Structured output from the Spec Writer LLM call."""
+
+    updated_sections: list[SpecSectionUpdate] = Field(
+        default_factory=list,
+        description="List of spec sections that need updating",
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description="Additional notes about the changes",
+    )
+
+
+# ============================================================================
 # Output Types
 # ============================================================================
 
@@ -186,6 +221,11 @@ class DriftReport(BaseModel):
     has_drift: bool = False
     auto_update_recommended: bool = False
     updated_spec_fragment: dict[str, Any] | None = None
+    # Spec update tracking (populated when --update-spec is used)
+    spec_file_updated: bool = False
+    backup_path: str | None = None
+    spec_update_result: SpecUpdateResult | None = None
+    update_diff: str | None = None
 
 
 # ============================================================================
