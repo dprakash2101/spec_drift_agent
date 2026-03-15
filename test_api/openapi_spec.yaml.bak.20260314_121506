@@ -412,10 +412,8 @@ components:
           type: string
           format: date-time
         updated_at:
-          oneOf:
-          - type: string
-            format: date-time
-          - type: 'null'
+          type: string
+          format: date-time
         metadata:
           type: object
           properties:
