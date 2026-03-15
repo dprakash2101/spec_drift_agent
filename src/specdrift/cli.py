@@ -369,12 +369,6 @@ def analyze(
         "-v",
         help="Enable verbose logging",
     ),
-    update_spec: bool = typer.Option(
-        False,
-        "--update-spec",
-        "-u",
-        help="Auto-update the spec file for backward-compatible drift (creates backup)",
-    ),
 ) -> None:
     """Analyze an API endpoint for spec drift."""
     from specdrift.modules.pipeline import analyze_endpoint
@@ -443,10 +437,7 @@ def analyze(
         cli_headers = _parse_key_value_pairs(header, "header")
         resolved_headers = {**config_headers, **cli_headers}
 
-        config_query_params = _ensure_string_dict(
-            config_data.get("query_params") or config_data.get("query"),
-            "query_params",
-        )
+        config_query_params = _ensure_string_dict(config_data.get("query_params"), "query_params")
         cli_query_params = _parse_key_value_pairs(query, "query")
         resolved_query_params = {**config_query_params, **cli_query_params}
 
@@ -588,7 +579,6 @@ def analyze(
                 token_scope=resolved_token_scope,
                 token_audience=resolved_token_audience,
                 model=model or config_data.get("model"),
-                update_spec=update_spec or config_data.get("update_spec", False),
             )
         )
 
@@ -596,8 +586,6 @@ def analyze(
             _output_json(report)
         else:
             _output_rich(report)
-            if report.spec_file_updated:
-                _output_spec_update(report)
 
         # Exit with error code if drift detected
         if report.has_drift:
@@ -684,63 +672,7 @@ def _output_rich(report: DriftReport) -> None:
         console.print(table)
 
 
-def _output_spec_update(report: DriftReport) -> None:
-    """Output spec update results with rich formatting."""
-    update = report.spec_update_result
-    if not update:
-        return
-
-    lines = ["[green bold]📝 Spec Updated[/green bold]\n"]
-    lines.append(f"  File:   [cyan]{report.spec_path}[/cyan]")
-    
-    if report.fix_verified is True:
-        lines.append("  Status: [green]✅ Fix Verified (0 anomalies)[/green]")
-    elif report.fix_verified is False:
-        lines.append(f"  Status: [yellow]⚠️ Fix Incomplete ({report.post_update_anomalies} anomalies remaining)[/yellow]")
-        
-    if report.backup_path:
-        lines.append(f"  Backup: [dim]{report.backup_path}[/dim]")
-
-    # Show applied sections
-    applied = [s for s in update.updated_sections if s.backward_compatible]
-    skipped = [s for s in update.updated_sections if not s.backward_compatible]
-
-    if applied:
-        lines.append("\n  [bold]Sections updated:[/bold]")
-        for s in applied:
-            lines.append(f"  [green]✅[/green] {s.section_path}")
-            lines.append(f"     {s.change_summary}")
-
-    if skipped:
-        lines.append("\n  [bold]Sections skipped (not backward-compatible):[/bold]")
-        for s in skipped:
-            lines.append(f"  [yellow]⚠️[/yellow]  {s.section_path}")
-            lines.append(f"     {s.change_summary}")
-
-    if update.notes:
-        lines.append("\n  [bold]Notes:[/bold]")
-        for note in update.notes:
-            lines.append(f"  • {note}")
-
-    # Show diff
-    if report.update_diff and report.update_diff != "No changes detected":
-        lines.append("\n  [bold]Diff:[/bold]")
-        for diff_line in report.update_diff.splitlines()[:20]:
-            if diff_line.startswith("+"):
-                lines.append(f"  [green]{diff_line}[/green]")
-            elif diff_line.startswith("-"):
-                lines.append(f"  [red]{diff_line}[/red]")
-            else:
-                lines.append(f"  {diff_line}")
-        if len(report.update_diff.splitlines()) > 20:
-            lines.append("  [dim]... (truncated)[/dim]")
-
-    console.print(Panel(
-        "\n".join(lines),
-        border_style="green",
-        padding=(0, 2),
-    ))
-
+# ---------------------------------------------------------------------------
 # Shared auth resolver (used by both analyze and scan)
 # ---------------------------------------------------------------------------
 
@@ -882,12 +814,6 @@ def scan(
     token_audience: str | None = typer.Option(None, "--token-audience"),
     output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON"),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
-    update_spec: bool = typer.Option(
-        False,
-        "--update-spec",
-        "-u",
-        help="Auto-update the spec file for backward-compatible drift (creates backup)",
-    ),
 ) -> None:
     """Interactively scan an OpenAPI spec — pick model, select endpoints, analyze."""
     from InquirerPy import inquirer
@@ -1099,11 +1025,7 @@ def scan(
     )
 
     global_headers = _ensure_string_dict(config_data.get("headers"), "headers")
-    global_query = _ensure_string_dict(
-        config_data.get("query_params") or config_data.get("query"),
-        "query_params",
-    )
-    resolve_update_spec = update_spec or config_data.get("update_spec", False)
+    global_query = _ensure_string_dict(config_data.get("query_params"), "query_params")
 
     reports: list[tuple[str, DriftReport | None, str | None]] = []  # (label, report, error)
     total = len(selected_endpoints_data)
@@ -1124,11 +1046,9 @@ def scan(
             label = f"{ep_method} {ep_path}"
             progress.update(task_id, description=f"Analyzing {label}")
 
+            # Per-endpoint overrides for headers/query/body
             ep_headers = {**global_headers, **_ensure_string_dict(ep_cfg.get("headers"), "headers")}
-            ep_query = {**global_query, **_ensure_string_dict(
-                ep_cfg.get("query_params") or ep_cfg.get("query"),
-                "query_params",
-            )}
+            ep_query = {**global_query, **_ensure_string_dict(ep_cfg.get("query_params"), "query_params")}
             ep_body = ep_cfg.get("body")
 
             try:
@@ -1143,7 +1063,6 @@ def scan(
                         query_params=ep_query or None,
                         body=ep_body,
                         model=selected_model,
-                        update_spec=resolve_update_spec,
                         **resolved_auth,
                     )
                 )
@@ -1233,59 +1152,30 @@ def scan(
     summary_table.add_column("Decision", justify="center")
     summary_table.add_column("Confidence", justify="center")
     summary_table.add_column("Anomalies", justify="center")
-    summary_table.add_column("Spec Updated", justify="center")
 
     drift_count = 0
     ok_count = 0
     error_count = 0
-    updated_count = 0
-    last_backup_path: str | None = None
 
     for label, report, error in reports:
         if error:
-            summary_table.add_row(label, "[red]ERROR[/red]", "—", "—", "—", "—")
+            summary_table.add_row(label, "[red]ERROR[/red]", "—", "—", "—")
             error_count += 1
         elif report and report.has_drift:
             decision = report.llm_decision
             d_label = decision.decision.value if decision else "—"
             conf = f"{decision.confidence:.0%}" if decision else "—"
             anoms = str(report.anomaly_summary.total_anomalies) if report.anomaly_summary else "0"
-            
-            spec_status = "—"
-            if report.spec_file_updated:
-                if report.fix_verified is True:
-                    spec_status = "[green]✅ Verified[/green]"
-                elif report.fix_verified is False:
-                    spec_status = "[yellow]⚠️ Partial[/yellow]"
-                else:
-                    spec_status = "[blue]📝 Updated[/blue]"
-                    
             summary_table.add_row(
-                label, "[yellow]DRIFT[/yellow]", d_label, conf, anoms, spec_status,
+                label, "[yellow]DRIFT[/yellow]", d_label, conf, anoms,
             )
             drift_count += 1
-            if report.spec_file_updated:
-                updated_count += 1
-            if report.backup_path:
-                last_backup_path = report.backup_path
         elif report:
-            summary_table.add_row(label, "[green]OK[/green]", "—", "—", "0", "—")
+            summary_table.add_row(label, "[green]OK[/green]", "—", "—", "0")
             ok_count += 1
 
     console.print(summary_table)
     console.print()
-
-    # Spec update summary
-    if updated_count > 0:
-        update_lines = [f"[green bold]📝 Spec auto-updated for {updated_count}/{drift_count} drifted endpoints[/green bold]"]
-        if last_backup_path:
-            update_lines.append(f"  Backup: [dim]{last_backup_path}[/dim]")
-        console.print(Panel(
-            "\n".join(update_lines),
-            border_style="green",
-            padding=(0, 2),
-        ))
-        console.print()
 
     # Final status
     parts = []
@@ -1293,8 +1183,6 @@ def scan(
         parts.append(f"[green]{ok_count} passed[/green]")
     if drift_count:
         parts.append(f"[yellow]{drift_count} drift[/yellow]")
-    if updated_count:
-        parts.append(f"[green]{updated_count} auto-fixed[/green]")
     if error_count:
         parts.append(f"[red]{error_count} errors[/red]")
     console.print(

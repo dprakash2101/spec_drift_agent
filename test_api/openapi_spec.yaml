@@ -1,287 +1,301 @@
-openapi: 3.0.3
+openapi: "3.0.3"
 info:
   title: SpecDrift Test API
   description: An API with intentional spec drift for testing
-  version: 1.0.0
+  version: "1.0.0"
+
 servers:
-- url: http://localhost:8000
-  description: Local development server
+  - url: http://localhost:8000
+    description: Local development server
+
 security:
-- BearerAuth: []
+  - BearerAuth: []
+
 paths:
   /users/{user_id}:
     get:
       operationId: getUser
       summary: Get a user by ID
-      security: []
+      security: []  # No auth required
       parameters:
-      - name: user_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      - name: include_metadata
-        in: query
-        schema:
-          type: boolean
-          default: false
-      - name: X-Request-ID
-        in: header
-        schema:
-          type: string
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: include_metadata
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: X-Request-ID
+          in: header
+          schema:
+            type: string
       responses:
-        '200':
+        "200":
           description: User found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
-        '404':
+                $ref: "#/components/schemas/User"
+        "404":
           description: User not found
+
   /users:
     get:
       operationId: listUsers
       summary: List all users
       security: []
       parameters:
-      - name: include_inactive
-        in: query
-        schema:
-          type: boolean
-          default: false
-      - name: limit
-        in: query
-        schema:
-          type: integer
-          minimum: 1
-          maximum: 100
-          default: 10
-      - name: offset
-        in: query
-        schema:
-          type: integer
-          minimum: 0
-          default: 0
-      - name: X-API-Version
-        in: header
-        schema:
-          type: string
+        - name: include_inactive
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: X-API-Version
+          in: header
+          schema:
+            type: string
       responses:
-        '200':
+        "200":
           description: List of users
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/User'
+                  $ref: "#/components/schemas/User"
+
     post:
       operationId: createUser
       summary: Create a new user
       parameters:
-      - name: X-Request-ID
-        in: header
-        schema:
-          type: string
+        - name: X-Request-ID
+          in: header
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateUserRequest'
+              $ref: "#/components/schemas/CreateUserRequest"
       responses:
-        '200':
+        "200":
           description: User created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
-        '401':
+                $ref: "#/components/schemas/User"
+        "401":
           description: Unauthorized
+
   /users/{user_id}/status:
     get:
       operationId: getUserStatus
       summary: Get user status
       security: []
       parameters:
-      - name: user_id
-        in: path
-        required: true
-        schema:
-          type: integer
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
       responses:
-        '200':
+        "200":
           description: User status
           content:
             application/json:
               schema:
                 type: object
                 required:
-                - id
-                - status
+                  - id
+                  - status
                 properties:
                   id:
                     type: integer
                   status:
                     type: string
                     enum:
-                    - active
-                    - inactive
+                      - active
+                      - inactive
                   reason:
                     type: string
+
   /items/{item_id}:
     get:
       operationId: getItem
       summary: Get an item by ID
       security: []
       parameters:
-      - name: item_id
-        in: path
-        required: true
-        schema:
-          type: integer
-      - name: currency
-        in: query
-        schema:
-          type: string
-          default: USD
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: currency
+          in: query
+          schema:
+            type: string
+            default: USD
       responses:
-        '200':
+        "200":
           description: Item found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Item'
-        '404':
+                $ref: "#/components/schemas/Item"
+        "404":
           description: Item not found
+
     put:
       operationId: updateItem
       summary: Update an item
       parameters:
-      - name: item_id
-        in: path
-        required: true
-        schema:
-          type: integer
+        - name: item_id
+          in: path
+          required: true
+          schema:
+            type: integer
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateItemRequest'
+              $ref: "#/components/schemas/UpdateItemRequest"
       responses:
-        '200':
+        "200":
           description: Item updated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Item'
-        '401':
+                $ref: "#/components/schemas/Item"
+        "401":
           description: Unauthorized
-        '404':
+        "404":
           description: Item not found
+
   /items:
     get:
       operationId: listItems
       summary: List items
       security: []
       parameters:
-      - name: category
-        in: query
-        schema:
-          type: string
-      - name: min_price
-        in: query
-        schema:
-          type: number
-          minimum: 0
-      - name: max_price
-        in: query
-        schema:
-          type: number
-          minimum: 0
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: min_price
+          in: query
+          schema:
+            type: number
+            minimum: 0
+        - name: max_price
+          in: query
+          schema:
+            type: number
+            minimum: 0
       responses:
-        '200':
+        "200":
           description: List of items
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Item'
+                  $ref: "#/components/schemas/Item"
+
   /search:
     post:
       operationId: search
       summary: Search across resources
       security: []
       parameters:
-      - name: X-Search-Context
-        in: header
-        schema:
-          type: string
+        - name: X-Search-Context
+          in: header
+          schema:
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SearchQuery'
+              $ref: "#/components/schemas/SearchQuery"
       responses:
-        '200':
+        "200":
           description: Search results
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SearchResponse'
+                $ref: "#/components/schemas/SearchResponse"
+
+
   /auth/bearer-protected:
     get:
       operationId: bearerProtected
       summary: Validate bearer auth
       responses:
-        '200':
+        "200":
           description: Bearer auth accepted
           content:
             application/json:
               schema:
                 type: object
                 required:
-                - status
-                - auth_type
+                  - status
+                  - auth_type
                 properties:
                   status:
                     type: string
                   auth_type:
                     type: string
-        '401':
+        "401":
           description: Unauthorized
+
   /auth/apikey-protected:
     get:
       operationId: apiKeyProtected
       summary: Validate API key auth
       security:
-      - ApiKeyHeader: []
-      - ApiKeyQuery: []
+        - ApiKeyHeader: []
+        - ApiKeyQuery: []
       parameters:
-      - name: api_key
-        in: query
-        schema:
-          type: string
+        - name: api_key
+          in: query
+          schema:
+            type: string
       responses:
-        '200':
+        "200":
           description: API key accepted
           content:
             application/json:
               schema:
                 type: object
                 required:
-                - status
-                - auth_type
+                  - status
+                  - auth_type
                 properties:
                   status:
                     type: string
                   auth_type:
                     type: string
-        '401':
+        "401":
           description: Unauthorized
+
   /auth/token:
     post:
       operationId: authToken
@@ -294,9 +308,9 @@ paths:
             schema:
               type: object
               required:
-              - grant_type
-              - client_id
-              - client_secret
+                - grant_type
+                - client_id
+                - client_secret
               properties:
                 grant_type:
                   type: string
@@ -310,16 +324,16 @@ paths:
                 audience:
                   type: string
       responses:
-        '200':
+        "200":
           description: Access token issued
           content:
             application/json:
               schema:
                 type: object
                 required:
-                - access_token
-                - token_type
-                - expires_in
+                  - access_token
+                  - token_type
+                  - expires_in
                 properties:
                   access_token:
                     type: string
@@ -327,48 +341,51 @@ paths:
                     type: string
                   expires_in:
                     type: integer
-        '400':
+        "400":
           description: Invalid grant type
-        '401':
+        "401":
           description: Invalid credentials
+
   /auth/client-credentials-protected:
     get:
       operationId: clientCredentialsProtected
       summary: Validate client credentials generated bearer token
       responses:
-        '200':
+        "200":
           description: Client credentials token accepted
           content:
             application/json:
               schema:
                 type: object
                 required:
-                - status
-                - auth_type
+                  - status
+                  - auth_type
                 properties:
                   status:
                     type: string
                   auth_type:
                     type: string
-        '401':
+        "401":
           description: Unauthorized
+
   /health:
     get:
       operationId: healthCheck
       summary: Health check
       security: []
       responses:
-        '200':
+        "200":
           description: Health status
           content:
             application/json:
               schema:
                 type: object
                 required:
-                - status
+                  - status
                 properties:
                   status:
                     type: string
+
 components:
   securitySchemes:
     BearerAuth:
@@ -382,16 +399,17 @@ components:
       type: apiKey
       in: query
       name: api_key
+
   schemas:
     User:
       type: object
       required:
-      - id
-      - name
-      - email
-      - status
-      - created_at
-      - updated_at
+        - id
+        - name
+        - email
+        - status
+        - created_at
+        - updated_at
       properties:
         id:
           type: integer
@@ -406,31 +424,20 @@ components:
         status:
           type: string
           enum:
-          - active
-          - inactive
+            - active
+            - inactive
         created_at:
           type: string
           format: date-time
         updated_at:
-          oneOf:
-          - type: string
-            format: date-time
-          - type: 'null'
-        metadata:
-          type: object
-          properties:
-            last_login:
-              type: string
-              format: date-time
-            login_count:
-              type: integer
-            request_id:
-              type: string
+          type: string
+          format: date-time
+
     CreateUserRequest:
       type: object
       required:
-      - name
-      - email
+        - name
+        - email
       properties:
         name:
           type: string
@@ -440,13 +447,14 @@ components:
         role:
           type: string
           default: user
+
     Item:
       type: object
       required:
-      - id
-      - name
-      - count
-      - price
+        - id
+        - name
+        - count
+        - price
       properties:
         id:
           type: integer
@@ -457,6 +465,7 @@ components:
         price:
           type: number
           format: float
+
     UpdateItemRequest:
       type: object
       properties:
@@ -466,10 +475,11 @@ components:
           type: integer
         price:
           type: number
+
     SearchQuery:
       type: object
       required:
-      - q
+        - q
       properties:
         q:
           type: string
@@ -479,12 +489,13 @@ components:
         offset:
           type: integer
           default: 0
+
     SearchResponse:
       type: object
       required:
-      - query
-      - results
-      - total
+        - query
+        - results
+        - total
       properties:
         query:
           type: string
