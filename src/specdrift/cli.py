@@ -27,8 +27,20 @@ from specdrift.types import ApiKeyLocation, AuthType, DecisionType, DriftReport,
 console = Console()
 app = typer.Typer(
     name="specdrift",
-    help="Detect and reconcile drift between API behavior and OpenAPI specs",
+    help=(
+        "Detect and reconcile drift between live API behavior and OpenAPI 3.x specs.\n\n"
+        "Quick start:\n\n"
+        "  specdrift                                  # interactive mode (auto-detects config)\n\n"
+        "  specdrift analyze --spec openapi.yaml \\   # single endpoint\n"
+        "    --endpoint https://api.example.com \\\n"
+        "    --path /users\n\n"
+        "  specdrift scan --config my.config.json    # multi-endpoint scan\n\n"
+        "  specdrift mcp --base-url https://api.example.com  # start MCP server\n\n"
+        "Exit codes: 0 = no drift, 1 = drift detected, 2 = error"
+    ),
     invoke_without_command=True,
+    rich_markup_mode="rich",
+    no_args_is_help=False,
 )
 
 
@@ -40,11 +52,15 @@ def _default(ctx: typer.Context) -> None:
 
     from InquirerPy import inquirer
 
+    from specdrift import __version__
+
     console.print()
     console.print(
         Panel(
-            "[bold cyan]SpecDrift[/bold cyan]\n"
-            "[dim]API spec drift detection & reconciliation[/dim]",
+            f"[bold cyan]SpecDrift[/bold cyan]  [dim]v{__version__}[/dim]\n"
+            "[dim]API spec drift detection & reconciliation[/dim]\n\n"
+            "[dim]Detects drift between live API responses and OpenAPI 3.x specs.\n"
+            "Uses Gemini LLM to classify: UPDATE_SPEC · API_BUG · NEEDS_REVIEW[/dim]",
             border_style="cyan",
             padding=(1, 4),
         )
@@ -54,9 +70,10 @@ def _default(ctx: typer.Context) -> None:
     action: str = inquirer.select(  # type: ignore[attr-defined]
         message="What would you like to do?",
         choices=[
-            {"name": "🔍  Scan — Interactive multi-endpoint analysis", "value": "scan"},
-            {"name": "📡  Analyze — Single endpoint analysis", "value": "analyze"},
-            {"name": "ℹ️   Version — Show version info", "value": "version"},
+            {"name": "🔍  Scan     — Interactive multi-endpoint analysis (recommended)", "value": "scan"},
+            {"name": "📡  Analyze  — Single endpoint, quick check", "value": "analyze"},
+            {"name": "🤖  MCP      — Start MCP server for LLM tool use", "value": "mcp"},
+            {"name": "ℹ️   Version  — Show version info", "value": "version"},
         ],
         pointer="❯",
     ).execute()
@@ -356,27 +373,44 @@ def analyze(
         False,
         "--json",
         "-j",
-        help="Output results as JSON",
+        help="Output results as JSON (useful for CI pipelines and scripting)",
+    ),
+    github_annotations: bool = typer.Option(
+        False,
+        "--github-annotations",
+        help="Emit GitHub Actions ::error:: annotations for each anomaly (use in CI workflows)",
     ),
     model: str | None = typer.Option(
         None,
         "--model",
-        help="Gemini model to use (e.g. gemini-2.5-flash, gemini-2.5-pro)",
+        help="Gemini model to use (gemini-2.5-flash or gemini-2.5-pro). Defaults to gemini-2.5-flash.",
     ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
         "-v",
-        help="Enable verbose logging",
+        help="Enable verbose logging (shows each pipeline step)",
     ),
     update_spec: bool = typer.Option(
         False,
         "--update-spec",
         "-u",
-        help="Auto-update the spec file for backward-compatible drift (creates backup)",
+        help="Auto-update the spec file for backward-compatible drift (creates a timestamped backup)",
     ),
 ) -> None:
-    """Analyze an API endpoint for spec drift."""
+    """Analyze a single API endpoint for spec drift.
+
+    Compares the live API response against the OpenAPI spec and reports anomalies.
+    Uses Gemini to classify drift as UPDATE_SPEC, API_BUG, or NEEDS_REVIEW.
+
+    Examples:
+
+      specdrift analyze --spec openapi.yaml --endpoint https://api.example.com --path /users
+
+      specdrift analyze --config my.config.json --update-spec
+
+      specdrift analyze --spec openapi.yaml --endpoint https://api.example.com --path /users --json
+    """
     from specdrift.modules.pipeline import analyze_endpoint
 
     # Set up logging
@@ -390,7 +424,8 @@ def analyze(
     config_base_dir = Path.cwd()
     if config_path is not None:
         if not config_path.exists():
-            console.print(f"[red]Error:[/red] Config file not found: {config_path}")
+            console.print(f"[red]Error:[/red] Config file not found: [bold]{config_path}[/bold]")
+            console.print("[dim]Hint: copy spec_drift_agent.config.example.json → spec_drift_agent.config.json and fill in your values.[/dim]")
             raise typer.Exit(1)
         config_path = config_path.resolve()
         config_base_dir = config_path.parent
@@ -398,6 +433,7 @@ def analyze(
             config_data = _load_config(config_path, env_file)
         except ValueError as exc:
             console.print(f"[red]Error:[/red] {exc}")
+            console.print("[dim]Hint: check that all [bold]$\\{VAR\\}[/bold] placeholders in your config have matching env vars set.[/dim]")
             raise typer.Exit(1) from exc
 
     auth_config_raw = config_data.get("auth", {})
@@ -423,11 +459,23 @@ def analyze(
         path_value = path or config_data.get("path")
 
         if spec_value is None:
-            raise ValueError("Missing required value: spec (CLI --spec or config 'spec')")
+            raise ValueError(
+                "Missing --spec (path to OpenAPI spec file).\n"
+                "  Example: --spec openapi.yaml\n"
+                "  Or set 'spec' in spec_drift_agent.config.json"
+            )
         if endpoint_value is None:
-            raise ValueError("Missing required value: endpoint (CLI --endpoint or config 'endpoint')")
+            raise ValueError(
+                "Missing --endpoint (base URL of the API).\n"
+                "  Example: --endpoint https://api.example.com\n"
+                "  Or set 'endpoint' in spec_drift_agent.config.json"
+            )
         if path_value is None:
-            raise ValueError("Missing required value: path (CLI --path or config 'path')")
+            raise ValueError(
+                "Missing --path (API path to analyze).\n"
+                "  Example: --path /users\n"
+                "  Or set 'path' in spec_drift_agent.config.json"
+            )
 
         method_value = method or config_data.get("method") or "GET"
         http_method = HttpMethod(str(method_value).upper())
@@ -437,7 +485,11 @@ def analyze(
 
         spec_path = _resolve_path(spec_value, config_base_dir)
         if not spec_path.exists():
-            raise ValueError(f"Spec file not found: {spec_path}")
+            raise ValueError(
+                f"Spec file not found: {spec_path}\n"
+                "  Check that the path is correct and the file exists.\n"
+                "  If using a config file, paths are resolved relative to the config file location."
+            )
 
         config_headers = _ensure_string_dict(config_data.get("headers"), "headers")
         cli_headers = _parse_key_value_pairs(header, "header")
@@ -599,6 +651,9 @@ def analyze(
             if report.spec_file_updated:
                 _output_spec_update(report)
 
+        if github_annotations:
+            _output_github_annotations(report)
+
         # Exit with error code if drift detected
         if report.has_drift:
             raise typer.Exit(1)
@@ -741,6 +796,21 @@ def _output_spec_update(report: DriftReport) -> None:
         padding=(0, 2),
     ))
 
+def _output_github_annotations(report: DriftReport) -> None:
+    """Emit GitHub Actions ::error:: annotations for each anomaly.
+
+    Output format: ::error file=<spec_path>,title=<anomaly_type>::<message>
+    These are picked up automatically by GitHub Actions as inline PR annotations.
+    """
+    if not report.anomaly_summary:
+        return
+    spec = report.spec_path
+    for anomaly in report.anomaly_summary.anomalies:
+        title = anomaly.anomaly_type.value
+        msg = f"{anomaly.json_path} — {anomaly.message}"
+        print(f"::error file={spec},title={title}::{msg}")
+
+
 # Shared auth resolver (used by both analyze and scan)
 # ---------------------------------------------------------------------------
 
@@ -880,16 +950,35 @@ def scan(
     token_url: str | None = typer.Option(None, "--token-url"),
     token_scope: str | None = typer.Option(None, "--token-scope"),
     token_audience: str | None = typer.Option(None, "--token-audience"),
-    output_json: bool = typer.Option(False, "--json", "-j", help="Output as JSON"),
-    verbose: bool = typer.Option(False, "--verbose", "-v"),
+    output_json: bool = typer.Option(False, "--json", "-j", help="Output results as JSON array (one object per endpoint)"),
+    github_annotations: bool = typer.Option(
+        False,
+        "--github-annotations",
+        help="Emit GitHub Actions ::error:: annotations for anomalies across all scanned endpoints",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging"),
     update_spec: bool = typer.Option(
         False,
         "--update-spec",
         "-u",
-        help="Auto-update the spec file for backward-compatible drift (creates backup)",
+        help="Auto-update the spec file for backward-compatible drift (creates a timestamped backup)",
     ),
 ) -> None:
-    """Interactively scan an OpenAPI spec — pick model, select endpoints, analyze."""
+    """Interactively scan an OpenAPI spec — pick model, select endpoints, analyze.
+
+    Walks through: model picker → spec analysis → endpoint selection → drift analysis → results.
+
+    Examples:
+
+      specdrift scan                                    # interactive, auto-detects config
+
+      specdrift scan --config my.config.json            # config-driven, no prompts
+
+      specdrift scan --spec openapi.yaml \\
+        --endpoint https://api.example.com              # prompts for remaining options
+
+      specdrift scan --config my.config.json --json     # CI mode, JSON output
+    """
     from InquirerPy import inquirer
     from InquirerPy.separator import Separator
     from specdrift.modules.openapi_parser import load_spec_from_file
@@ -951,7 +1040,11 @@ def scan(
     try:
         spec_path = _resolve_path(spec_value, config_base_dir)
         if not spec_path.exists():
-            raise ValueError(f"Spec file not found: {spec_path}")
+            raise ValueError(
+                f"Spec file not found: {spec_path}\n"
+                "  Check that the path is correct and the file exists.\n"
+                "  If using a config file, paths are resolved relative to the config file location."
+            )
     except (ValueError, TypeError) as exc:
         console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(1) from exc
@@ -1169,6 +1262,10 @@ def scan(
             else:
                 results_json.append({"endpoint": label, "error": error})
         print(json.dumps(results_json, indent=2))
+        if github_annotations:
+            for _label, report, _error in reports:
+                if report:
+                    _output_github_annotations(report)
         return
 
     # Per-endpoint result panels
@@ -1306,15 +1403,34 @@ def scan(
         )
     )
 
+    if github_annotations:
+        for _label, report, _error in reports:
+            if report:
+                _output_github_annotations(report)
+
     if drift_count or error_count:
         raise typer.Exit(1)
 
 
 @app.command()
 def version() -> None:
-    """Show version information."""
+    """Show version and environment information."""
+    import sys
     from specdrift import __version__
-    console.print(f"specdrift version {__version__}")
+
+    console.print(
+        Panel(
+            f"[bold cyan]specdrift[/bold cyan]  [bold]{__version__}[/bold]\n\n"
+            f"Python  [cyan]{sys.version.split()[0]}[/cyan]\n"
+            f"Config  [dim]spec_drift_agent.config.json "
+            + ("[green]found[/green]" if Path("spec_drift_agent.config.json").exists() else "[dim]not found[/dim]")
+            + "[/dim]\n"
+            f"Docs    [dim]https://github.com/dprakash2101/spec_drift_agent[/dim]",
+            title="Version",
+            border_style="cyan",
+            padding=(1, 4),
+        )
+    )
 
 
 if __name__ == "__main__":
